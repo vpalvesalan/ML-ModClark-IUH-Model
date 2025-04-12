@@ -1,0 +1,78 @@
+Continuing our work, I want you to write the section Methodology. Below is what you wrote as drafted to use as a guide line to write the actual text:
+
+
+
+[This section will outline the planned methodology for the project. It will describe the overall architecture of the system, including data collection, preprocessing, feature engineering, the selection and training of the machine learning model(s), model evaluation, and potentially the development of a web application. A flowchart illustrating the process from data acquisition to the web application interface will be included. The specific machine learning approach (e.g., regression techniques, neural networks) and the rationale behind its selection will be detailed here.]
+
+
+Write your text considering the following:
+
+
+* Overall architecture: 
+
+1. Collect Data
+
+2. Preprocess Raw Data
+
+3. Derive Voronoy polygon of ppt stations, derive watershed boundary
+
+4. From raster and vector layers, derive watershed characteristics. 
+
+5. Create new features from step 4. 
+
+6. Average ppt data within the watershed based on the voronoy polygons and watershed boundary
+
+7. Select storm events
+
+7.a collect precipitation metada (in this step I want you to suggest metadata to collect, like precipitation variability in space and time, cumulative ppt station, event duration and others)
+
+8. Separete baseflow
+
+9. Optimise parameters: tc, R, Iniital and constant Loss
+
+10. Save data from previous steps to silver db
+
+11. Identify and handle outliers
+
+12. Aggregate Tc and R parameters
+
+13. Make necessary joins
+
+14. Save already-to-train data to a gold db
+
+15. EDA
+
+16. ML Training
+
+17 Evaluate
+
+18. Streamlit app
+
+* Do not to go into details on every step, neither provide all steps above and structured steps in your text as a flowchart to illustrate the overall architecture is provided. Instead incoporate less relevant steps in your text.
+
+* Go into detail with data collection. Below is a table you may use and reproduce:
+
+
+
+| Data Type         | Source                          | Format       | Description                                   |
+
+|-------------------|---------------------------------|--------------|-----------------------------------------------|
+
+| Shapefiles        | US Census Bureau, USGS, NOAA, Esri   | `.shp` `.kmz` `.GeoJSON` | Vector data for geographic boundaries, stream gages, precipitation stations and dam location. |
+
+| Raster Data       | USGS (SRTM), MRLC              | `.tiff`       | Elevation, water body, land cover data, land cover confidence, impervious surface, impervious surface descriptor.    |
+
+| Tabular Data      | USGS, NOAA                     | `.csv`, `.json` | Time-series data for streamflow and precipitation. |
+
+Include on the above table soil type data (source still to be defined)
+
+
+
+*Briefly define and explain Vorony Polygons, and how to average ppt data for each watershed
+
+*Briefly explain how watershed boundaries is derived from DEM
+* Provide a table with geophysical features (you may provide it your self. Provide a comprehensive list of features and derived feature from existing ones. Provide it on a table).
+* Go into the details on the event selection: initially all storm events will be selected. A storm event is any precipitation event. A precipitation event is considered finished after three time step with no rain
+* Go into detail on the base flow separation  method Recursive Digital Filter. Explain the concept behind RDF and how it works
+* Go into details on the precipitation loss method adopted which is the initial and constant loss. Assert it was chosen due to the simplicity and beacause it is widely adopted for this kind of simulation.
+* Go into detail on the parameter optmisation. Tc, R, Initial and constant loss will be optmised concurrently. Explain why it is important to do so. Initial Values: Tc is calculated from Kirpich equation (Patra, 2008), R is calculated from equation (13/7)*Tc, Initial Loss is calculated as the total preciptation prior to the initial flow. Constant loss
