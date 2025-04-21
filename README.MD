@@ -86,11 +86,11 @@ where $D_{k}$ is the travel distance from grid cell $k$ to the watershed outlet 
 
 As the solution in equation $(3)$ is recursive, outflow will theoretically continue for an infinite duration. Within this model, computation of the unit hydrograph ordinates continues until the volume of the outflow exceeds 0.995 inches or mm over watershed area. The hydrograph ordinates are then multiplied by a correction factor, so that the total volume becomes 1 unit depth. The scaling factor is obtained by:
 
-$$\text {Scaling Factor} = \frac{1.0}{\text {Cumulative Volume}} \qquad (6)$$ 
+$$\text {Scaling Factor} = \frac{1.0}{\text {Cumulative Volume}} \tag{6}$$ 
 
 Since the hydrograph is discrete (values at intervals), the volume is approximated by summing the area of trapezoids under the curve:
 
-$$\text {Cumulative Volume} = \sum \bigg( \frac{U_i + U_{i-1}}{2} \bigg) \cdot \Delta t \tag{7}$$
+$$\text {Cumulative Volume} = \sum \Big( \frac{U_i + U_{i-1}}{2} \Big) \cdot \Delta t \tag{7}$$
 
 
 #### Unit Rainfall vs. Real Rainfall
