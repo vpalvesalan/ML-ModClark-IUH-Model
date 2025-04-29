@@ -52,123 +52,136 @@ This project aims to significantly enhance the efficiency and accessibility of h
 
 ## Methodology
 
+[This section will outline the planned methodology for the project. It will describe the overall architecture of the system, including data collection, preprocessing, feature engineering, the selection and training of the machine learning model(s), model evaluation, and potentially the development of a web application. A flowchart illustrating the process from data acquisition to the web application interface will be included. The specific machine learning approach (e.g., regression techniques, neural networks) and the rationale behind its selection will be detailed here.]
+
 ### ModClark's IUH Computation
 
-The IUH describes how a watershed responds to a **single unit depth of rainfall (e.g., 1 mm or 1 in)** uniformly distributed in space and time. The ModClark model uses a recursive routing approach to simulate how rainfall excess is routed through each grid cell toward the watershed outlet. In this method, the IUH ordinates can be obtained by:
+The Instantaneous Unit Hydrograph (IUH) describes how a watershed responds to a **single unit depth of rainfall** (e.g., 1 mm or 1 in) applied instantaneously and uniformly in space. The ModClark model uses a recursive routing approach to simulate how rainfall excess is translated through the travel-time distribution and then routed through a linear reservoir at the basin outlet. The IUH ordinates are obtained by the following equations:
 
+$$IUH_{(i)} = c\,I_i + (1 - c)\,IUH_{(i-1)} \qquad (1)$$
 
-$$IUH_{(i)} = c I_i + (1 - c)IUH_{(i-1)} \qquad (1)$$
-.
-$$c = \frac{\Delta t}{R + 0.5\Delta t} \qquad (2)$$
-.
-$$U_i = \frac{IUH_{(i-1)} + IUH_{(i)}}{2} \qquad (3)$$  
+$$c = \frac{\Delta t}{R + 0.5\,\Delta t} \qquad (2)$$
 
+$$U_i = \frac{IUH_{(i-1)} + IUH_{(i)}}{2} \qquad (3)$$
 
-Equations 1, 2 and 3 are known as the IUH Routing Equation, Routing Coefficient  and Unit Hydrograph Ordinates respectively, where $I_i \ [L\cdot{T^1}]$ is the ordinate of the translation hydrograph (which represents the inflow rate), $IUH_{(i)}$ is the instantaneous unit hydrograph.   $U_i\ [L\cdot{T^1}]$ is the unit hydrograph at time $i$. $c$ is the routing coefficient, $\Delta t$ is the time step used in routing, and $R$ is the storage coefficient.
+where:
 
-$IUH_{(i)}$ is a recursive formula. The routing coefficient $c$ controls the degree of attenuation in the hydrograph and the unit hydrograph ordinates $U_i$ are computed by averaging consecutive IUH values.
+- $I_i$ [$T^{-1}$] is the inflow rate to the routing reservoir at time step $i$ (the ordinate of the translation hydrograph);
+- $IUH_{(i)}$ [$T^{-1}$] is the instantaneous unit hydrograph ordinate at time step $i$;
+- $U_i$ [$T^{-1}$] is the unit hydrograph ordinate at time step $i$;
+- $c$ is the dimensionless routing coefficient;
+- $\Delta t$ [$T$] is the routing time step;
+- $R$ [$T$] is the storage coefficient of the linear reservoir.
 
-The inflow rate at time $i$ can be obtained by:
+Equation (1) is the recursive IUH routing equation, (2) defines the routing coefficient, and (3) computes the unit hydrograph ordinates by averaging consecutive IUH values.
 
-$$I_i = \frac{A_i}{A \cdot \Delta t}\cdot P\qquad (4)$$
+#### Inflow Computation
 
-where $A_i$ is the watershed area contributing to inflow at time-step $i$, $A$ is the total watershed area and, $P$ is the single unit depth of rainfall excess (1 mm or 1 in). $A_i$ is obtained by summing the areas of all grid cells $k$ whose travel time $t_k$ satisfies $(i-1)\Delta t < t_k \leq i\Delta t$. Mathematically, this is expressed as:
+The inflow rate $I_i$ for a unit pulse (1 mm or 1 in) is computed by:
 
-$$A_i = \sum_{\substack{k \ (i-1)\Delta t < t_k \leq i\Delta t}} A_k \qquad (5)$$
+$$I_i = \frac{A_i}{A\,\Delta t} \qquad (4)$$
 
-where $A_k$ is the area of grid cell $k$, $t_k$ is the travel time of grid cell $k$. The travel time of each grid cell $k$ is obtained by:
+where:
 
-$$T_{k} = T_{c}\frac{D_{k}}{D_{max}} \qquad (5)$$
+- $A_i$ [$L^2$] is the total watershed area contributing runoff in the interval $(i-1)\Delta t < t_k \le i\Delta t$;
+- $A$ [$L^2$] is the total watershed area;
+- $\Delta t$ [$T$] is the time step.
 
-where $D_{k}$ is the travel distance from grid cell $k$ to the watershed outlet and $D_{max}$ is the travel distance for the grid cell that is most distant from the watershed outlet. 
-
-#### Truncating the infinitely Long Tail
-
-As the solution in equation $(3)$ is recursive, outflow will theoretically continue for an infinite duration. Within this model, computation of the unit hydrograph ordinates continues until the volume of the outflow exceeds 0.995 inches or mm over watershed area. The hydrograph ordinates are then multiplied by a correction factor, so that the total volume becomes 1 unit depth. The scaling factor is obtained by:
-
-$$\text {Scaling Factor} = \frac{1.0}{\text {Cumulative Volume}} \qquad (6)$$ 
-
-Since the hydrograph is discrete (values at intervals), the volume is approximated by summing the area of trapezoids under the curve:
-
-$$\text {Cumulative Volume} = \sum \bigg( \frac{U_i + U_{i-1}}{2} \bigg) \cdot \Delta t \ qquad (7)$$
-
-
-#### Unit Rainfall vs. Real Rainfall
-
-- **Unit Rainfall Event**: One-time application of 1 mm of rain over all cells → Produces the **Unit Hydrograph**.
-- **Actual Rainfall Event**: Varying depth and timing across cells → Requires **convolution** with the Unit Hydrograph to produce streamflow.
-
----
-
-### 🌊 Convolution for Simulated Flow
-
-Once the unit hydrograph \( U \) is constructed, we compute the simulated streamflow hydrograph by convolving it with the rainfall hyetograph \( P \):
+The contributing area $A_i$ is obtained by summing the areas of all grid cells $k$ whose travel time $t_k$ falls within the $i$th interval:
 
 $$
-Q_i = \sum_{j=0}^{i} P_j \cdot U_{i-j} \qquad (4)
+A_i = \sum_{\substack{k\\(i-1)\Delta t < t_k \le i\Delta t}} A_k
+\qquad (5)
 $$
 
-Where:
+The travel time $t_k$ of each grid cell $k$ is derived from its travel distance $D_k$ by:
 
-- \( Q_i \): Simulated discharge at time \( i \) \((\text{m}^3/\text{s})\)
-- \( P_j \): Rainfall excess at time \( j \) \((\text{mm} \cdot \text{km}^2)\)
-- \( U_{i-j} \): Unit hydrograph ordinate \((\text{m}^3/\text{s})\)
+$$
+t_k = T_c \,\frac{D_k}{D_{\max}} \qquad (6)
+$$
 
----
+where:
 
-### ✂️ Truncating the Infinitely Long Tail
+- $D_k$ [$L$] is the flow-path distance from cell $k$ to the watershed outlet;
+- $D_{\max}$ [$L$] is the maximum travel distance within the watershed;
+- $T_c$ [$T$] is the basin time of concentration.
 
-The recursive nature of Equation (1) causes the hydrograph tail to **extend infinitely** due to the exponential decay. However, in practice, we truncate the IUH after its cumulative volume reaches **99.5% of the total volume**.
+#### Truncating the Infinite Tail
 
-#### How to Truncate:
+Because the recursive solution in (3) produces an infinitely long hydrograph tail, computation stops when the cumulative volume (area under the $U_i$ curve) exceeds **0.995** units of depth. The ordinates are then scaled so that the total volume equals exactly **1.0** unit of depth. The scaling factor is:
 
-1. Compute cumulative sum of \( U_i \)
-2. Find the time index where:
-   $$
-   \frac{\sum_{i=0}^{k} U_i}{\sum_{i=0}^{\infty} U_i} \geq 0.995
-   $$
-3. Truncate \( U \) beyond index \( k \)
+$$\text{Scaling Factor} = \frac{1.0}{\text{Cumulative Volume}}
+\qquad (7)$$
 
-4. Normalize \( U \) such that the total volume equals 1 unit of rainfall (1 mm over 1 km² = 1,000 m³):
+The cumulative volume is approximated by trapezoidal integration:
 
-   $$
-   U_i^{\text{adjusted}} = \frac{U_i}{\sum_{j=0}^{k} U_j} \cdot 1{,}000 \qquad (\text{m}^3/\text{s})
-   $$
+$$\text{Cumulative Volume} = \sum_{i=1}^n \biggl(\frac{U_i + U_{i-1}}{2}\biggr)\,\Delta t
+\qquad (8)$$
 
----
+The adjusted $U_i$ is then obtained by:
 
-### 🧭 Step-by-Step Procedure
+ $$U_i^{\text{adj}} =  U_i \cdot \text {Scaling Factor} \qquad (9)$$
 
-1. **Grid Preprocessing**  
-   - Input: Cell areas \( A_{\text{cell}} \, [\text{km}^2] \), travel times \( t_{\text{cell}} \, [\text{min}] \)
+ where:
+ - $U_i^{adj}$ is the adjusted unit hydrograph ordinate.
 
-2. **Define Impulse Input (Unit Hydrograph Case)**  
-   - Set: \( P = 1 \, \text{mm} \)  
-   - For each cell, assign \( I_i = P \cdot A_{\text{cell}} \) at the corresponding travel time index
+#### Real Storm Event
 
-3. **Compute Routing Coefficient**  
-   - Use Equation (2) with chosen \( R \, [\text{min}] \) and \( \Delta t \, [\text{min}] \)
+The convolution is performed using the scaled unit hydrograph ordinates $U_i$ from Equation (3) (after applying the scaling factor from Equations (7)–(8)):
 
-4. **Route IUH**  
-   - Use Equation (1) recursively for each time step
+$$
+Q(t) = \sum_{\tau=0}^{t} P(\tau) \, U_{(t-\tau)}^{adj}\,\Delta t \qquad (10)
+$$
 
-5. **Compute Unit Hydrograph Ordinates**  
-   - Use Equation (3) to compute \( U_i \)
+where:
+- $P(\tau)$ [$L/T$] is the rainfall excess intensity at time step $\tau$;
+- $U_{(t-\tau)}^{adj}$ is the scaled unit hydrograph ordinate at lag $(t-\tau)$;
+- $\Delta t$ is the hyetograph time interval;
+- $Q(t)$ [$L/T$] is the resulting depth-rate hydrograph at time $t$.
 
-6. **Truncate the Hydrograph**  
-   - Identify where cumulative volume ≥ 99.5%  
-   - Apply normalization (see truncation section)
+To convert this depth-rate hydrograph to volumetric discharge $Q_{\mathrm{vol}}(t)$ [$L^3/T$], multiply by the watershed area $A$:
 
-7. **Simulate Streamflow for Real Events**  
-   - Given actual precipitation excess \( P_i \) per time step  
-   - Use convolution via Equation (4) to compute \( Q_i \)
+$$Q_{\mathrm{vol}}(t) = Q(t)\,\times\,A \qquad (11)$$
 
----
+#### Step-by-Step Procedure
 
-By following this procedure, you can compute the IUH and simulate streamflow hydrographs using the ModClark method, laying the foundation for robust runoff modeling and parameter optimization using machine learning techniques.
+The following step-by-step guide summarizes the procedures defined above:
 
+1. Grid Preprocessing  
+   - Input: Cell areas $A_k$ and travel distances $D_k$
+   - Compute: Travel time for each cell using Equation (6): $t_k = T_c\,\frac{D_k}{D_{\max}}$
 
-[This section will outline the planned methodology for the project. It will describe the overall architecture of the system, including data collection, preprocessing, feature engineering, the selection and training of the machine learning model(s), model evaluation, and potentially the development of a web application. A flowchart illustrating the process from data acquisition to the web application interface will be included. The specific machine learning approach (e.g., regression techniques, neural networks) and the rationale behind its selection will be detailed here.]
+2. Compute Area Contribution per Time Step  
+   - For each time interval $(i-1)\Delta t < t_k \leq i\Delta t$, sum the areas to compute $A_i$ using Equation (5).
+
+3. Compute Inflow Rate  
+   - Using Equation (4), compute inflow rate: $I_i = \frac{A_i}{A\,\Delta t}$
+
+4. Compute Routing Coefficient
+   - Compute routing coefficient $c$ using Equation (2): $c = \frac{\Delta t}{R + 0.5\,\Delta t}$
+
+5. Compute IUH Recursively 
+   - Use Equation (1) recursively to compute $IUH_{(i)}$: $IUH_{(i)} = c\,I_i + (1-c)\,IUH_{(i-1)}$
+
+6. Compute Unit Hydrograph Ordinates 
+   - Compute $U_i$ using Equation (3):  $U_i = \frac{IUH_{(i-1)} + IUH_{(i)}}{2}$
+
+7. Truncate the Hydrograph and Normalize  
+   - Compute cumulative volume using Equation (8): $
+     \text{Cumulative Volume} = \sum_{i=1}^n \biggl(\frac{U_i + U_{i-1}}{2}\biggr)\,\Delta t$
+   - Stop calculation when cumulative volume exceeds 99.5% of unit depth.
+   - Apply scaling factor using Equation (7) to normalize hydrograph volume to 1.0 unit depth: $
+     \text{Scaling Factor} = \frac{1.0}{\text{Cumulative Volume}}$
+
+8. Simulate Streamflow for Real Storm Events 
+   - Given precipitation excess $P(\tau)$ at each time step, compute discharge $Q(t)$ via convolution using Equation (10):  
+     $Q(t) = \sum_{\tau=0}^{t} P(\tau)\,U_{(t-\tau)}^{adj}\,\Delta t$
+
+9. Convert to Volumetric Discharge
+   - Multiply depth-rate $Q(t)$ by watershed area $A$ to obtain volumetric discharge using Equation (11): $Q_{\mathrm{vol}}(t) = Q(t)\,\times\,A$
+
+By following this procedure, you can compute the IUH and simulate streamflow hydrographs using the ModClark method.
+
 
 ## Data (Anticipated)
 
