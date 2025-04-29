@@ -52,7 +52,7 @@ This project aims to significantly enhance the efficiency and accessibility of h
 
 ## Methodology
 
-[This section will outline the planned methodology for the project. It will describe the overall architecture of the system, including data collection, preprocessing, feature engineering, the selection and training of the machine learning model(s), model evaluation, and potentially the development of a web application. A flowchart illustrating the process from data acquisition to the web application interface will be included. The specific machine learning approach (e.g., regression techniques, neural networks) and the rationale behind its selection will be detailed here.]
+This section outlines the methodology employed in this project to develop a machine learning model for estimating ModClark IUH parameters. The overall workflow, illustrated in a flowchart (link to be added later), encompasses data collection, preprocessing, feature engineering, machine learning model training, and evaluation.
 
 ### ModClark's IUH Computation
 
@@ -181,9 +181,144 @@ The following step-by-step guide summarizes the procedures defined above:
    - Multiply depth-rate $Q(t)$ by watershed area $A$ to obtain volumetric discharge using Equation (11): $Q_{\mathrm{vol}}(t) = Q(t)\,\times\,A$
 
 By following this procedure, you can compute the IUH and simulate streamflow hydrographs using the ModClark method.
+                                                            
+### Preprocessing
+
+Common steps to preprocess the raw data are taken: time zone conversion to UTC, fill in of gaps (based on the average), filter geodata to the area of study, delineate watershed boundary and derive characteristics. After basic preprocessing, the following steps are taken to prepare the data:
+
+* **Voronoi Polygon:** Voronoi polygons are used to account for the spatial variation of rainfall. A Voronoi polygon is a region where any point inside the polygon is closer to a given precipitation station than to any other station. In this study, Voronoi polygons are used to assign a precipitation value to each grid cell (at 10m resolution) for the selected storm event. This method is also used to calculate the average precipitation over the watershed for storm event selection.
+
+* **Watershed Delineation:** Watershed boundaries and their characteristics (flow direction, geophysical characteristics, and cell distance to the outlet) are derived from Digital Elevation Models (DEMs). The table below lists the geophysical features derived:
+
+    | Feature                     | Description                                                                                                                                                                   |
+    | :-------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | Area                        | Total area of the watershed.                                                                                                                                                  |
+    | Slope                       | Average slope of the watershed.                                                                                                                                                 |
+    | Drainage Density            | Total length of stream channels per unit area of the watershed.                                                                                                                |
+    | Stream Length               | Length of the main stream channel.                                                                                                                                             |
+    | Basin Length                | Maximum distance from the watershed outlet to the watershed boundary.                                                                                                         |
+    | Main Channel Slope          | Slope of the main stream channel.                                                                                                                                              |
+    | Hypsometric Integral        | A measure of the distribution of land elevation within a watershed.                                                                                                            |
+    | Compactness Coefficient     | Ratio of the watershed perimeter to the circumference of a circle with the same area.                                                                                           |
+    | Form Factor                 | Ratio of the watershed area to the square of the basin length.                                                                                                                  |
+    | Elongation Ratio            | Ratio of the diameter of a circle with the same area as the watershed to the maximum basin length.                                                                              |
+    | Relief Ratio                  | Ratio of the total basin relief to the maximum basin length.                                                                                                                   |
+    | Ruggedness Number             | Product of the basin relief and the drainage density.                                                                                                                          |
+    | Overland Flow Length        | Average length of overland flow paths within the watershed.                                                                                                                    |
+    | Channel Sinuosity           | Ratio of the channel length to the straight-line distance between the channel's endpoints.                                                                                       |
+    | Land Cover                  | Land cover type for the year of storm event identification, obtained from Multi-Resolution Land Characteristics (MRLC) data.                                                        |
+
+    Regulated watersheds (those containing dams, according to the National Inventory of Dams) will be excluded from the analysis.
+
+* **Storm Event Selection:** All storm events within a 10-year period of data will be considered for parameter optimization. A storm event is defined as a period of recorded rainfall depth at the gauging station that produces any amount of runoff. A storm event is considered to have ended if there are three consecutive time steps with zero flow recorded at the gauging station. To minimize the influence of snowmelt, events occurring in January and February will be filtered out. The following metadata and characteristics are recorded for each storm event (15-min resolution):
+
+    * Total precipitation in the 14, 7, and 3 days prior to the storm start.
+    * Total precipitation in the 24, 6, and 3 hours prior to the storm start.
+    * Rainfall temporal variability.
+    * Rainfall spatial variability.
+    * Total precipitation depth.
+    * Rainfall duration.
+    * Month of occurrence.
+
+* **Baseflow Separation:** Baseflow separation is performed using the Recursive Digital Filter (RDF). Baseflow is the portion of streamflow that comes from subsurface sources, such as groundwater discharge. It is necessary to separate baseflow from the total streamflow to isolate the direct runoff component, which is the focus of the ModClark model. The RDF method is chosen for its simplicity and effectiveness in separating baseflow from direct runoff. The RDF works by applying a filter to the streamflow data to partition it into baseflow and direct runoff components.
+
+* **Precipitation Loss Method:** Initial and constant loss method is used. Precipitation loss refers to the portion of rainfall that does not contribute to direct runoff due to processes such as infiltration, interception, and depression storage. This method is chosen for its simplicity and wide adoption in similar hydrological simulations. The initial loss represents the amount of precipitation that occurs before runoff begins, while the constant loss represents a continuous rate of loss throughout the storm event.
+
+* **Parameter Optimization:** The ModClark parameters, $T_c$ and $R$, along with the initial and constant loss parameters, will be optimized concurrently. This is important because these parameters are often interdependent, and optimizing them together can lead to a more accurate representation of the rainfall-runoff process. The Differential Evolution (DE) algorithm will be used for this optimization. DE is a robust and efficient global optimization algorithm that is well-suited for this type of problem.
+
+    Initial parameter values are set as follows: $T_c$ is estimated using the Kirpich equation (Patra, 2008), $R$ is initialized as (13/7) * $T_c$, initial loss is set to the total precipitation prior to the start of flow, and constant loss is initialized as the average hydraulic conductivity of the soil types in the watershed, weighted by their proportions.
+
+    Reasonable bounds are applied: initial loss is constrained between 0 and the accumulated rainfall before the rising limb. Constant loss is bounded between 75% of the hydraulic conductivity of the least permeable soil and 125% of the hydraulic conductivity of the most permeable soil in the catchment. This approach is considered reasonable because it allows the parameters to vary within physically plausible ranges while still guiding the optimization process.
+
+    The following table, reproduced from Rawls, Brakensiek, and Miller (1983), shows typical values of saturated hydraulic conductivity for different soil textures:
+
+    | Soil Texture             | Saturated Hydraulic Conductivity (cm/hr) |
+    | :----------------------- | :--------------------------------------- |
+    | Sand                     | 29.9                                     |
+    | Loamy Sand               | 14.7                                     |
+    | Sandy Loam               | 11.2                                     |
+    | Loam                     | 5.4                                      |
+    | Silt Loam                | 6.8                                      |
+    | Sandy Clay Loam          | 5.2                                      |
+    | Clay Loam                | 2.6                                      |
+    | Silty Clay Loam          | 2.0                                      |
+    | Sandy Clay               | 1.5                                      |
+    | Silty Clay               | 1.0                                      |
+    | Clay                     | 0.6                                      |
+
+    The Nash-Sutcliffe Efficiency (NSE) coefficient is used as the objective function for optimization. The NSE is defined as:
+
+    $$
+    NSE = 1 - \frac{\sum_{t=1}^{T} (Q_{obs}^t - Q_{sim}^t)^2}{\sum_{t=1}^{T} (Q_{obs}^t - \overline{Q}_{obs})^2}
+    $$
+
+    where:
+
+    -   $Q_{obs}^t$ is the observed discharge at time step $t$,
+    -   $Q_{sim}^t$ is the simulated discharge at time step $t$,
+    -   $\overline{Q}_{obs}$ is the mean observed discharge over the entire period $T$.
+
+    NSE measures the relative magnitude of the residual variance compared to the data variance. It ranges from -∞ to 1, with 1 indicating a perfect match between simulated and observed hydrographs. NSE is chosen because it is a widely used and robust metric for evaluating the overall fit of hydrological models.
+
+    In addition to NSE, the following metrics are used to evaluate the optimized hydrographs:
+
+    * Percentage difference in peak flow.
+    * Difference in time to peak.
+    * Difference in total volume
+
+    The steps for parameter optimization are:
+        1.  Define the objective function (NSE).
+        2.  Set initial parameter values and bounds.
+        3.  Run the Differential Evolution algorithm.
+        4.  Evaluate the resulting hydrograph using NSE, percentage difference in peak flow, difference in time to peak and difference in total volume.
+        5.  Repeat steps 3 and 4 until convergence criteria are met.
+
+* **Filtering Outliers:** Theoretically, storm events within the same watershed should exhibit similar $T_c$ and $R$ values, as these parameters primarily depend on the watershed's physical characteristics, which are time-invariant. However, variations in estimated $T_c$ and $R$ for different storm events within the same watershed can arise due to errors in precipitation excess estimation (e.g., inaccuracies in estimating precipitation loss or neglecting spatial rainfall variability) or errors in baseflow separation. These errors can lead to inaccurate simulation of the direct runoff hydrograph, resulting in non-representative $T_c$ and $R$ values during the optimization process.
+
+    Outliers in the optimized $T_c$ and $R$ values will be identified using the interquartile range (IQR) technique and excluded from further analysis. After filtering outliers, the $T_c$ and $R$ values for each watershed will be averaged to obtain representative values for that watershed. These averaged $T_c$ and $R$ values, along with the corresponding watershed characteristics, will then be used to train the machine learning models.
+
+### Preparation for Machine Learning Algorithm
+
+Watershed characteristics (geophysical and land cover) will be joined with the averaged $T_c$ and $R$ values for each watershed. Any additional data preparation steps required by the specific machine learning algorithms (e.g., scaling, normalization) will also be performed.
+
+### Exploratory Data Analysis (EDA)
+
+Exploratory Data Analysis (EDA) will be conducted to understand the relationships between $T_c$, $R$, and the watershed characteristics. For multiple linear regression, EDA will help determine if any data transformations are needed to meet the model's assumptions. In general, EDA will be used to identify the most relevant watershed characteristics for predicting $T_c$ and $R$ across all the machine learning models.
+
+### Machine Learning Model Training
+
+The following machine learning algorithms will be tested:
+
+* Multiple Linear Regression
+* Random Forests
+* Support Vector Machines (SVM)
+* Light Gradient Boosting Machine (LightGBM)
+
+Multiple linear regression will serve as a baseline model. Given the relatively small dataset, these models are expected to provide good performance. Random Forests and LightGBM are robust to outliers and can capture non-linear relationships. SVM can handle high-dimensional data effectively.
+
+### Evaluation
+
+The performance of the trained machine learning models will be evaluated using the following metrics:
+
+* **Direct Parameter Evaluation:**
+    * Root Mean Squared Error (RMSE) of $T_c$ and $R$.
+    * Mean Absolute Percentage Error (MAPE) of $T_c$ and $R$.
+    * Bias of $T_c$ and $R$.
+
+* **Hydrograph Evaluation:** The models' ability to predict accurate hydrographs will be assessed by comparing simulated hydrographs against observed hydrographs from a set of storm events held out for evaluation. The following metrics will be used:
+    * Nash-Sutcliffe Efficiency (NSE)
+    * Percentage difference in peak flow.
+    * Difference in time to peak.
+    * Difference in total volume.
+
+    These metrics provide a comprehensive evaluation of the models' performance, assessing both their accuracy in predicting $T_c$ and $R$ and their ability to reproduce observed streamflow hydrographs.
 
 
 ## Data (Anticipated)
+
+All data used in this project are publicly available, sourced from various reputable sources:
+
+| Data                                      | Source 
 
 [This section will describe the types of data anticipated for use in this project. This may include:
 * **Physiographic data:** Digital Elevation Models (DEMs) to derive basin morphometric characteristics (area, slope, drainage density, etc.).
