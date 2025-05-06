@@ -276,119 +276,313 @@ Voronoi polygons (also known as Thiessen polygons) are used to account for the s
 
 #### Precipitation Loss Method
 
-Initial and constant loss method is used. Precipitation loss refers to the portion of rainfall that does not contribute to direct runoff due to processes such as infiltration, interception, and depression storage. This method is chosen for its simplicity and wide adoption in similar hydrological simulations. The initial loss represents the amount of precipitation that occurs before runoff begins, while the constant loss represents a continuous rate of loss throughout the storm event.
+Initial and $\text {Constant Loss}$ method is used. Precipitation loss refers to the portion of rainfall that does not contribute to direct runoff due to processes such as infiltration, interception, and depression storage. This method is chosen for its simplicity and wide adoption in similar hydrological simulations. The $\text {Initial Loss}$ represents the amount of precipitation that occurs before runoff begins, while the $\text {Constant Loss}$ represents a continuous rate of loss throughout the storm event.
 
-* **Parameter Optimization:** The ModClark parameters, $T_c$ and $R$, along with the initial and constant loss parameters, will be optimized concurrently. This is important because these parameters are often interdependent, and optimizing them together can lead to a more accurate representation of the rainfall-runoff process. The Differential Evolution (DE) algorithm will be used for this optimization. DE is a robust and efficient global optimization algorithm that is well-suited for this type of problem.
+#### Parameter Optimization
 
-    Initial parameter values are set as follows: $T_c$ is estimated using the Kirpich equation (Patra, 2008), $R$ is initialized as (13/7) * $T_c$, initial loss is set to the total precipitation prior to the start of flow, and constant loss is initialized as the average hydraulic conductivity of the soil types in the watershed, weighted by their proportions.
+The parameters of the ModClark conceptual model, specifically the Time of Concentration ($T_c$), the Storage Coefficient ($R$), and the initial and $\text {Constant Loss}$ parameters, are optimized concurrently to calibrate the model against observed rainfall-runoff events. This concurrent optimization approach is critical due to the interdependence exhibited by these parameters during the calibration process. While the physical processes represented by these parameters – losses (such as infiltration and other abstractions) which determine the volume and timing of rainfall excess, and routing/storage ($T_c$ and $R$) which transform that excess rainfall into a simulated hydrograph at the outlet – are conceptually distinct and sequentially applied within the model structure, their influence on the final simulated hydrograph is cumulative. The observed hydrograph is the integrated result of both how much water becomes runoff and how it is subsequently transported and attenuated through the basin. Therefore, in the parameter space explored during calibration, adjustments to loss parameters to match observed runoff volumes or initiation times will impact the characteristics of the excess rainfall hydrograph that is routed. Similarly, modifications to routing parameters ($T_c$ and $R$) to improve the fit of the simulated hydrograph's timing and shape necessitate complementary adjustments in loss parameters to maintain or enhance the overall agreement with the observed flow. This complex interplay and mutual influence on the model's output hydrograph mean that the parameters are statistically and functionally interdependent during the optimization procedure, making their simultaneous calibration essential for obtaining a set of parameters that collectively provides the most accurate representation of the watershed's rainfall-runoff transformation.
 
-    Reasonable bounds are applied: initial loss is constrained between 0 and the accumulated rainfall before the rising limb. Constant loss is bounded between 75% of the hydraulic conductivity of the least permeable soil and 125% of the hydraulic conductivity of the most permeable soil in the catchment. This approach is considered reasonable because it allows the parameters to vary within physically plausible ranges while still guiding the optimization process.
+*Algorithm*
 
-    The following table, reproduced from Rawls, Brakensiek, and Miller (1983), shows typical values of saturated hydraulic conductivity for different soil textures:
+The optimization process for calibrating the Time of Concentration ($T_c$), Storage Coefficient ($R$), Initial Loss, and $\text {Constant Loss}$ parameters will be performed using the **Differential Evolution (DE) algorithm**. DE is a powerful and widely-used global optimization algorithm that is particularly well-suited for complex, non-linear, and potentially multi-modal objective functions, characteristic of hydrological model calibration.
 
-    | Soil Texture             | Saturated Hydraulic Conductivity (cm/hr) |
-    | :----------------------- | :--------------------------------------- |
-    | Sand                     | 29.9                                     |
-    | Loamy Sand               | 14.7                                     |
-    | Sandy Loam               | 11.2                                     |
-    | Loam                     | 5.4                                      |
-    | Silt Loam                | 6.8                                      |
-    | Sandy Clay Loam          | 5.2                                      |
-    | Clay Loam                | 2.6                                      |
-    | Silty Clay Loam          | 2.0                                      |
-    | Sandy Clay               | 1.5                                      |
-    | Silty Clay               | 1.0                                      |
-    | Clay                     | 0.6                                      |
+Unlike gradient-based optimization methods that rely on the derivative of the objective function and can easily get trapped in local minima, DE is a population-based stochastic search technique. It operates on a population of candidate solutions, iteratively improving them through a process inspired by natural evolution. Here's a breakdown of how it works:
 
-    The Nash-Sutcliffe Efficiency (NSE) coefficient is used as the objective function for optimization. The NSE is defined as:
+- Initialization: The algorithm begins by generating an initial population of candidate solutions within the defined parameter bounds. Each solution is a vector containing values for the parameters being optimized ($T_c$, $R$, $\text {Initial Loss}$, and $\text  {Constant Loss}$). This initial population is typically generated randomly, ensuring a diverse exploration of the search space from the outset.
 
-    $$
-    NSE = 1 - \frac{\sum_{t=1}^{T} (Q_{obs}^t - Q_{sim}^t)^2}{\sum_{t=1}^{T} (Q_{obs}^t - \overline{Q}_{obs})^2}
-    $$
+- Mutation: For each individual vector in the current population (target vector), DE creates a mutated vector. This is done by randomly selecting three distinct vectors from the population. The difference between two of these vectors is scaled by a mutation factor and added to the third vector. This "differential" strategy is a key feature of DE, allowing it to explore the search space effectively by leveraging the existing population's diversity.
 
-    where:
+ - Crossover: A trial vector is then generated by combining elements from the target vector and the mutated vector. A crossover probability determines, for each parameter, whether the value comes from the mutated vector or the original target vector. This step promotes the mixing of successful parameter combinations found in different individuals within the population.
 
-    -   $Q_{obs}^t$ is the observed discharge at time step $t$,
-    -   $Q_{sim}^t$ is the simulated discharge at time step $t$,
-    -   $\overline{Q}_{obs}$ is the mean observed discharge over the entire period $T$.
+ - Selection: The trial vector is then evaluated using the objective function - Nash-Sutcliffe efficiency ($NSE$), in this work. The trial vector is compared to the original target vector. If the trial vector yields a better objective function value (e.g., a lower error in hydrological simulation), it replaces the target vector in the next generation's population. Otherwise, the original target vector is retained.
 
-    NSE measures the relative magnitude of the residual variance compared to the data variance. It ranges from -∞ to 1, with 1 indicating a perfect match between simulated and observed hydrographs. NSE is chosen because it is a widely used and robust metric for evaluating the overall fit of hydrological models.
+This iterative process of mutation, crossover, and selection continues over many generations. The population of solutions evolves, with individuals progressively moving towards regions of the parameter space that yield better objective function values.
 
-    In addition to NSE, the following metrics are used to evaluate the optimized hydrographs:
+The calibration of hydrological model parameters presents several challenges that make DE a suitable choice:
 
-    * Percentage difference in peak flow.
-    * Difference in time to peak.
-    * Difference in total volume
+- Non-linearity: The relationship between these parameters and the resulting hydrological response (e.g., streamflow hydrograph) is often highly non-linear. Small changes in one parameter can have complex and non-proportional effects on the output, making gradient-based methods less effective. DE's population-based approach and differential mutation are adept at navigating such non-linear landscapes.
 
-    The steps for parameter optimization are:
-        1.  Define the objective function (NSE).
-        2.  Set initial parameter values and bounds.
-        3.  Run the Differential Evolution algorithm.
-        4.  Evaluate the resulting hydrograph using NSE, percentage difference in peak flow, difference in time to peak and difference in total volume.
-        5.  Repeat steps 3 and 4 until convergence criteria are met.
+- Parameter Interdependencies: The optimal value for one parameter can depend on the values of others. There are often complex interactions between $T_c$, $R$, and the loss parameters in determining the shape and timing of the simulated hydrograph. DE's ability to explore combinations of parameter values simultaneously across the population helps in identifying synergistic interactions that might be missed by methods optimizing parameters individually.
 
-* **Filtering Outliers:** Theoretically, storm events within the same watershed should exhibit similar $T_c$ and $R$ values, as these parameters primarily depend on the watershed's physical characteristics, which are time-invariant. However, variations in estimated $T_c$ and $R$ for different storm events within the same watershed can arise due to errors in precipitation excess estimation (e.g., inaccuracies in estimating precipitation loss or neglecting spatial rainfall variability) or errors in baseflow separation. These errors can lead to inaccurate simulation of the direct runoff hydrograph, resulting in non-representative $T_c$ and $R$ values during the optimization process.
+- Potential Multi-modality: The objective function for hydrological model calibration can have multiple local optima. This means there might be several different sets of parameter values that produce reasonably good fits to observed data, but only one set represents the globally optimal solution. DE's global search capabilities, driven by the diverse initial population and the mutation operation, reduce the risk of converging to a suboptimal local minimum.
 
-    Outliers in the optimized $T_c$ and $R$ values will be identified using the interquartile range (IQR) technique and excluded from further analysis. After filtering outliers, the $T_c$ and $R$ values for each watershed will be averaged to obtain representative values for that watershed. These averaged $T_c$ and $R$ values, along with the corresponding watershed characteristics, will then be used to train the machine learning models.
+- Robustness: DE is known for its robustness to the initial choice of parameters. Since it starts with a randomly generated population spanning the search space, it is less sensitive to the need for good initial guesses compared to local optimization methods.
 
-### Preparation for Machine Learning Algorithm
+- Simultaneous Optimization: DE naturally lends itself to the simultaneous optimization of multiple parameters, which is precisely what is required for calibrating $T_c$, $R$, $\text {Initial Loss}$, and $\text {Constant Loss}$ concurrently.
 
-Watershed characteristics (geophysical and land cover) will be joined with the averaged $T_c$ and $R$ values for each watershed. Any additional data preparation steps required by the specific machine learning algorithms (e.g., scaling, normalization) will also be performed.
+- Proven Application in Hydrology: Differential Evolution is known for its performance in hydrological models. Its effectiveness in handling the complexities inherent in hydrological optimization problems has been demonstrated in various research contexts. This track record provides confidence in its suitability for the current research.
+
+_Initial Parameter Values_
+
+Initial parameter values are set as follows: $T_c$ is estimated using the Kirpich equation (Patra, 2008): $T_c = 0.000323 \times L_b^{0.77} \times S_{10-85}^{-0.385}$. $R$ is initialized as $R = \frac {13}{7} \times T_c$. $\text {Initial Loss}$ is set to the total precipitation prior to the start of flow, and $\text {Constant Loss}$ is initialized as the average hydraulic conductivity of the soil types in the watershed, weighted by their proportions.
+
+Reasonable bounds are applied: $\text {Initial Loss}$ is constrained between 0 and the accumulated rainfall before the start of runoff. $\text {Constant Loss}$ is bounded between 75% of the hydraulic conductivity of the least permeable soil and 125% of the hydraulic conductivity of the most permeable soil in the catchment. This approach is considered reasonable because it allows the parameters to vary within physically plausible ranges while still guiding the optimization process.
+
+The following table, reproduced from Rawls, Brakensiek, and Miller (1983), shows typical values of saturated hydraulic conductivity for different soil textures:
+
+| Soil Texture             | Saturated Hydraulic Conductivity (in/hr) |
+| :----------------------- | :--------------------------------------- |
+| Sand                     | 4.6|
+| Loamy Sand               | 1.2|
+| Sandy Loam               | 0.4|
+| Loam                     | 0.1|
+| Silt Loam                | 0.3|
+| Sandy Clay Loam          | 0.06|
+| Clay Loam                | 0.04|
+| Silty Clay Loam          | 0.04|
+| Sandy Clay               | 0.02|
+| Silty Clay               | 0.02|
+| Clay                     | 0.01|
+
+_Objective Function_
+
+The Nash-Sutcliffe Efficiency (NSE) coefficient is used as the objective function for optimization. The NSE is defined as:
+
+$$NSE = 1 - \frac{\sum_{t=1}^{T} (Q_{obs}^t - Q_{sim}^t)^2}{\sum_{t=1}^{T} (Q_{obs}^t - \overline{Q}_{obs})^2}$$
+
+where $Q_{obs}^t$ is the observed discharge at time step $t$, $Q_{sim}^t$ is the simulated discharge at time step $t$, $\overline{Q}_{obs}$ is the mean observed discharge over the entire period $T$.
+
+NSE measures the relative magnitude of the residual variance compared to the data variance. It ranges from -∞ to 1, with 1 indicating a perfect match between simulated and observed hydrographs. NSE is chosen because it is a widely used and robust metric for evaluating the overall fit of hydrological models.
+
+In addition to NSE, the following metrics are used to evaluate the optimized hydrographs:
+
+   * Percentage difference in peak flow.
+   * Difference in time to peak.
+   * Difference in total volume
+
+   The following steps summarizes the parameter optimization process:
+   1.  Define the objective function (NSE).
+   2.  Set initial parameter values and bounds.
+   3.  Run the Differential Evolution algorithm.
+   4.  Evaluate the resulting hydrograph using NSE
+   5.  Repeat steps 3 and 4 until convergence criteria are met.
+
+#### Outliers and data aggregation
+Theoretically, storm events within the same watershed should exhibit similar $T_c$ and $R$ values, as these parameters primarily depend on the watershed's physical characteristics, which are time-invariant. However, variations in estimated $T_c$ and $R$ for different storm events within the same watershed can arise due to errors in precipitation excess estimation (e.g., inaccuracies in estimating precipitation loss or neglecting spatial rainfall variability) or errors in baseflow separation. These errors can lead to inaccurate simulation of the direct runoff hydrograph, resulting in non-representative $T_c$ and $R$ values during the optimization process. Therefore, errs in estimating any of the associated parameteres, is expected to result in outlier $T_c$ and $R$ parameteres.
+
+Outliers will be identified using the interquartile range (IQR) technique and excluded from further analysis. After filtering outliers, the $T_c$ and $R$ values for each watershed will be averaged to obtain representative values for that watershed. These averaged $T_c$ and $R$ values, along with the corresponding watershed characteristics, will then be used to train the machine learning models.
 
 ### Exploratory Data Analysis (EDA)
 
-Exploratory Data Analysis (EDA) will be conducted to understand the relationships between $T_c$, $R$, and the watershed characteristics. For multiple linear regression, EDA will help determine if any data transformations are needed to meet the model's assumptions. In general, EDA will be used to identify the most relevant watershed characteristics for predicting $T_c$ and $R$ across all the machine learning models.
+Exploratory Data Analysis (EDA) is a critical initial phase of the modeling process, involving the systematic investigation of the dataset's main characteristics. In the context of this research, EDA will be conducted to gain a comprehensive understanding of the relationships between the geomorphological watershed characteristics and the target ModClark parameters, $T_c$ and $R$. This process involves summarizing the data's key properties through visual and statistical methods, identifying patterns, detecting potential anomalies or outliers, and informing subsequent steps in the modeling pipeline, including feature preprocessing and model selection.
+
+A primary focus of EDA will be to examine the nature of the relationships between each independent variable (geomorphological feature) and the dependent variables ($T_c$ and $R$). This will involve generating scatter plots of each geomorphological feature against $T_c$ and against $R$. These visualizations are essential for visually assessing whether relationships appear linear, non-linear (e.g., curved, exponential, power-law), monotonic, or if there are indications of thresholds or sudden changes. For the linear models (OLS MLR and Elastic Net Regression), these scatter plots are particularly important for identifying features where transformations (such as logarithmic, power, or polynomial) may be necessary to approximate linearity, as discussed in the Feature Transformation and Scaling section. Additionally, examining residual plots after fitting preliminary linear models can help to diagnose patterns indicative of non-linearity or heteroscedasticity, further guiding transformation decisions.
+
+Beyond assessing feature-target relationships, EDA will involve analyzing the characteristics of the geomorphological features themselves. Univariate analysis will include computing summary statistics (mean, median, standard deviation, quartiles, minimum, and maximum) and generating histograms or box plots for each feature. This provides insight into their central tendency, variability, range, and the shape of their distributions. Understanding feature distributions is valuable for identifying potential outliers and assessing the suitability of certain transformations (like Box-Cox, which aims to normalize distributions) or scaling methods.
+
+Multivariate analysis will focus on understanding the relationships among the geomorphological features. A correlation matrix will be computed to quantify the pairwise linear association between features using Pearson correlation coefficients. If non-linear monotonic relationships are suspected, Spearman correlation coefficients will also be considered. Visualizations such as scatter plot matrices (for a subset of features) can provide a visual overview of these pairwise relationships. Identifying features that are highly correlated with each other (multicollinearity) is especially important, as it can impact the stability and interpretability of OLS MLR coefficient estimates. While Elastic Net is designed to handle multicollinearity through regularization, understanding these interdependencies among features is still valuable for interpreting the relative importance or roles of different geomorphological descriptors.
+
+Furthermore, EDA will include examining the distributions and summary statistics of the target variables ($T_c$ and $R$) themselves. Understanding the range and variability of $T_c$ and $R$ within the dataset provides context for evaluating model performance. Data quality checks, such as identifying missing values, obvious errors, or physically impossible values (if not already addressed during initial data compilation), will also be conducted during the EDA phase to ensure the reliability of the dataset used for modeling.
+
+In summary, EDA serves as a foundational step to thoroughly understand the dataset's structure, uncover relationships, identify data quality issues, and provide empirical grounding for subsequent decisions regarding feature preprocessing strategies and the selection, configuration, and interpretation of the chosen machine learning models.
 
 ### Machine Learning Model Training
 
-The following machine learning algorithms will be tested:
+To estimate the ModClark parameters, $T_c$, and $R$, from the delineated geomorphological characteristics, a suite of machine learning algorithms will be trained and evaluated. This selection aims to explore different modeling approaches, ranging from a fundamental linear model and its regularized extension to more complex non-linear ensemble methods, providing a comprehensive assessment of the relationship between watershed geomorphology and hydrological response parameters. The candidate models are **Multiple Linear Regression, Elastic Net Regression, Support Vector Machines (SVM)** and, **Random Forests**.
 
-* Multiple Linear Regression
-* Random Forests
-* Support Vector Machines (SVM)
-* Light Gradient Boosting Machine (LightGBM)
+#### Multiple Linear Regression
 
-Multiple linear regression will serve as a baseline model. Given the relatively small dataset, these models are expected to provide good performance. Random Forests and LightGBM are robust to outliers and can capture non-linear relationships. SVM can handle high-dimensional data effectively.
+Multiple Linear Regression (MLR) will be employed as a foundational model to serve as a baseline for comparison with more complex algorithms. MLR models the linear relationship between a dependent variable (in this case, either $T_c$ or $R$) and multiple independent variables (the geomorphological features). The general form of the model is expressed as:
+
+$$
+y = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \dots + \beta_p x_p + \epsilon
+$$
+
+Here, $y$ represents the predicted parameter ($T_c$ or $R$), $x_1, x_2, \dots, x_p$ are the $p$ geomorphological features (e.g., Area, Basin Length, Drainage Density), $\beta_0$ is the intercept, $\beta_1, \beta_2, \dots, \beta_p$ are the coefficients representing the change in $y$ for a one-unit change in each respective feature $x_i$ (holding others constant), and $\epsilon$ is the error term.
+
+Effective application of MLR relies on several key assumptions regarding the data and the error term:
+* **Linearity:** There is a linear relationship between the independent variables ($x_i$) and the dependent variable ($y$).
+* **Independence of Errors:** The errors ($\epsilon$) are independent of each other.
+* **Homoscedasticity:** The variance of the errors is constant across all levels of the independent variables.
+* **Normality of Errors:** The errors are normally distributed.
+* **No Multicollinearity:** The independent variables are not highly correlated with each other.
+
+Violations of these assumptions can affect the reliability and interpretability of the model's coefficients and statistical inferences.
+
+Regarding data volume, MLR can provide reasonable performance and useful insights into linear relationships even with relatively small datasets, provided its assumptions are approximately met. However, its ability to capture complex, non-linear interactions between features is inherently limited.
+
+MLR is not inherently sensitive to the scale of input features in terms of its predictive capability. The magnitude of the learned coefficients ($\beta_i$), however, is directly dependent on the scale of the corresponding feature ($x_i$). For example, if Area ($A$) is measured in km² versus m², the coefficient for Area will differ by a factor of $10^6$. MLR offers high interpretability, as the magnitude and sign of each coefficient $\beta_i$ directly indicate the estimated linear impact of the corresponding feature $x_i$ on the predicted output $y$, assuming the model assumptions are met.
+
+#### Elastic Net Regression
+
+Elastic Net Regression is a type of penalized linear regression that combines the penalties of both Lasso (L1 regularization) and Ridge (L2 regularization). This approach modifies the standard MLR objective function by adding a penalty term proportional to both the sum of the absolute values of the coefficients (L1) and the sum of the squared values of the coefficients (L2). The objective function minimized is:
+
+$$
+\min_{\beta_0, \beta} \left\{ \frac{1}{N} \sum_{i=1}^N (y_i - (\beta_0 + x_i^T \beta))^2 + \lambda \left[ \alpha \|\beta\|_1 + (1-\alpha) \|\beta\|_2^2 \right] \right\}
+$$
+
+Here, $N$ is the number of data points, $y_i$ is the observed value for the $i$-th data point, $x_i^T$ is the vector of features for the $i$-th data point, $\beta_0$ is the intercept, $\beta$ is the vector of coefficients, $\lambda$ is a non-negative regularization parameter controlling the overall strength of the penalty, and $\alpha$ is a parameter ($0 \le \alpha \le 1$) balancing the mix between the L1 penalty ($\|\beta\|_1$) and the L2 penalty ($\|\beta\|_2^2$). When $\alpha = 1$, Elastic Net becomes Lasso; when $\alpha = 0$, it becomes Ridge.
+
+Elastic Net assumes a linear relationship between the features and the dependent variable, similar to OLS MLR. However, its estimation process does not strictly rely on the strong assumptions regarding the distribution, independence, and homoscedasticity of the error term in the same way OLS MLR does for statistical inference. A key advantage of Elastic Net over standard OLS MLR is its inherent capability to handle multicollinearity among features, which can be common among geomorphological parameters (e.g., Area and Basin Length, or different slope metrics). While OLS estimates become unstable and highly variable with correlated features, the L2 penalty component in Elastic Net effectively manages this issue by shrinking correlated coefficients. Furthermore, the combined L1 and L2 penalties make Elastic Net robust against overfitting, which is a significant concern when training models on datasets with a moderate number of data points relative to the number of features (like the 150-250 points and 18 features in this study). The L1 penalty also allows for feature selection, driving the coefficients of less relevant features exactly to zero, which can simplify the model and potentially highlight the most influential geomorphological predictors of $T_c$ and $R$.
+
+Given the dataset size and the potential for correlated geomorphological features, Elastic Net is well-suited for this study. It provides a more robust and generalizable linear modeling approach compared to standard OLS MLR by mitigating the issues of multicollinearity and overfitting through regularization. It works effectively with moderate data volumes where more complex non-linear models might struggle to generalize without extensive tuning and validation.
+
+Elastic Net, like other penalized linear models, is sensitive to the scale of input features. This is because the penalty terms are applied directly to the magnitude of the coefficient values. Features with larger numerical scales would see their corresponding coefficients penalized more heavily if the data is not scaled, potentially leading to suboptimal model fitting. Therefore, feature scaling (standardization or normalization) is essential before training an Elastic Net model to ensure that the regularization affects all coefficients proportionally based on their importance rather than their feature scale.
+
+In terms of interpretability, Elastic Net offers a higher degree than more complex  models like Random Forests or non-linear SVMs. The learned coefficients can be inspected to understand the estimated (shrunk) linear impact of each feature. The feature selection property (when $\alpha > 0$) can further enhance interpretability by yielding sparser models that highlight a subset of features deemed most relevant by the model.
+
+#### Support Vector Machines (SVM)
+
+Support Vector Machines (SVM), specifically adapted for regression (Support Vector Regression - SVR), aim to find a function that deviates from the target by no more than a specified epsilon ($\epsilon$) for training data points, while being as flat as possible. SVR seeks to find a hyperplane in a high-dimensional space that best fits the data points. Using kernel functions (such as linear, polynomial, or Radial Basis Function - RBF), SVM can effectively model non-linear relationships by implicitly mapping the input features into a higher-dimensional space where a linear separation or fit is possible.
+
+SVMs are particularly effective in high-dimensional spaces and can provide good generalization performance even on complex datasets. Their ability to handle non-linearities via kernels makes them suitable for potentially intricate relationships between geomorphological features and hydrological parameters.
+
+SVR can perform well on moderate-sized datasets (like the 150-250 data points available), and its performance is often less affected by the number of features compared to some other algorithms when using appropriate kernels. However, selecting the optimal kernel and its parameters (hyperparameters) is crucial and can require significant tuning, which can be challenging with a limited number of data points.
+
+Support Vector Machines, especially those employing distance-based kernels (like polynomial or RBF), are highly sensitive to the scale of input features. Features with larger numerical ranges can disproportionately influence the calculation of distances between data points, which is fundamental to defining the hyperplane and kernel computations. For instance, if Basin Area ($A$) values are orders of magnitude larger than Channel Sinuosity ($S_i$) values, Area could dominate the distance metric, reducing the effective contribution of Sinuosity to the model. Therefore, feature scaling (standardization or normalization) is essential when using SVMs to ensure that all features contribute appropriately to the model fitting process. Regarding interpretability, the degree varies with the kernel. An SVM with a linear kernel offers some interpretability, as the weights learned for each feature can be examined. However, when non-linear kernels (like RBF) are used, the model operates in a transformed, high-dimensional space, rendering it largely a "black box" where the relationship between input features and the output prediction is not directly human-interpretable.
+
+
+#### Random Forests
+
+Random Forests (RF) is an ensemble learning method that constructs a multitude of decision trees during training and outputs the mean prediction of the individual trees (for regression). The algorithm introduces randomness through bootstrapping (sampling the training data with replacement for each tree) and random feature selection at each tree split, which helps to reduce variance and prevent overfitting.
+
+RF models are powerful in their ability to implicitly capture complex, non-linear relationships and interactions between features without requiring explicit specification of these relationships. They are also known for their robustness to outliers in the input data and their capacity to handle different types of features.
+
+Random Forests generally require more data than simple linear models to fully leverage their ability to learn complex patterns by building a diverse forest of trees. While they can perform reasonably well on moderate datasets (150-250 data points in this study's context), their performance typically improves with larger volumes of data. Compared to single decision trees, they are less prone to overfitting than single decision trees on small data due to the ensemble nature.
+
+A significant advantage of tree-based models like Random Forests is that they are not sensitive to the scale of input features. The splitting decisions within each tree are based on comparisons of a feature's value to a threshold ($x_i \le threshold$). These comparisons are not affected by linear transformations (scaling) of the feature values. Therefore, feature scaling is not necessary for training Random Forest models. For example, whether Basin Length ($L_b$) is in meters or kilometers does not change the relative order of data points along that feature axis, which is what tree splits rely on. In terms of interpretability, Random Forests are often considered less interpretable than linear models. While it is possible to extract feature importance scores that rank features based on their overall contribution to the model's predictive power, understanding precisely how a specific combination of feature values for a given watershed leads to a particular prediction requires tracing paths through numerous individual trees, which is computationally intensive and difficult for human comprehension.
+
+The selection of these diverse machine learning models allows for a robust investigation into the relationship between watershed geomorphological characteristics and ModClark parameters. By comparing the performance and insights gained from linear, regularized linear, kernel-based methods and, tree-based ensemble, this study aims to identify the most effective approach for estimating $T_c$ and $R$ from readily available watershed data.
+
+### Feature Transformation and Scaling
+
+The application of linear regression models, such as Ordinary Least Squares Multiple Linear Regression (OLS MLR) and Elastic Net Regression, relies on the assumption that the relationships between the independent variables (geomorphological features) and the dependent variables ($T_c$ and $R$) are linear. However, hydrological response parameters are often known to exhibit non-linear relationships with watershed characteristics, frequently described by power laws or other non-linear functions. Furthermore, algorithms like Elastic Net and SVM are sensitive to the scale and distribution of input features. To address these challenges and prepare the data for linear modeling, feature preprocessing steps involving transformation to promote linearity and scaling to standardize the feature ranges will be applied.
+
+#### Feature Transformation for Linearity
+
+To satisfy the linearity assumption of OLS MLR and Elastic Net, a systematic approach to feature transformation will be undertaken for each geomorphological characteristic. The objective is to transform the features such that their relationship with the target variables ($T_c$ and $R$) becomes approximately linear. The transformation process will be attempted in the following sequence for each feature:
+
+1.  **Logarithmic Transformation:** This involves applying a logarithmic function (e.g., the natural logarithm) to the feature values ($x$). The transformation is $x' = \log(x)$. This method is particularly effective for features that have a skewed distribution (commonly right-skewed) or are believed to have a multiplicative or power-law relationship with the target variable, which is frequently the case for hydrological parameters related to basin size (Area, Lengths) and time. Log transformation linearizes relationships of the form $y = a \cdot x^b$ into $\log(y) = \log(a) + b \log(x)$, or $y = a \cdot b^x$ into $\log(y) = \log(a) + x \log(b)$. A prerequisite for the standard logarithmic transformation is that the feature values must be strictly positive.
+
+2.  **Power Transformation (Box-Cox):** If a logarithmic transformation does not sufficiently linearize the relationship or normalize the feature's distribution, the Box-Cox transformation will be applied. The Box-Cox transformation is a family of power transformations parameterized by $\lambda$, designed to find the optimal power to transform a feature to be as close to a normal distribution as possible, which often aids in linearizing relationships in regression. The transformation is defined as:
+    $$
+    x^{(\lambda)} = \begin{cases} \frac{x^\lambda - 1}{\lambda} & \text{if } \lambda \neq 0 \\ \log(x) & \text{if } \lambda = 0 \end{cases}
+    $$
+    The optimal value of $\lambda$ is estimated from the data. This transformation requires the input feature values to be strictly positive.
+
+3.  **Polynomial Features:** If neither logarithmic nor Box-Cox transformations result in a sufficiently linear relationship, polynomial features will be considered as a final attempt at linearization for OLS MLR and Elastic Net. This involves creating new features by raising existing features to a power (e.g., $x^2, x^3$) or generating interaction terms between features (e.g., $x_1 x_2$). Including polynomial terms up to a certain degree allows the linear model to fit polynomial curves in the original feature space. However, given the dataset size (150-250 data points) and the initial number of features (18), the creation of polynomial features must be approached cautiously. The degree of polynomial expansion and the inclusion of interaction terms will be limited to avoid a drastic increase in the total number of features, which could jeopardize model efficiency and increase the risk of overfitting the limited training data, despite the regularization provided by Elastic Net.
+
+Features for which none of these transformation methods successfully establish an approximately linear relationship with the target variables ($T_c$ and $R$) will be excluded from the input dataset used for training the OLS MLR and Elastic Net models.
+
+#### Feature Scaling
+
+Following feature transformation, the independent variables will be scaled to standardize their ranges ( in the case of of SVM model, it will be scaled directly. As SVM handles well complex relationship between dependent and independent variables, features will no be transformed prior to scaling when usded in SVM). This step is essential for algorithms like Elastic Net and Support Vector Machine, which are sensitive to the scale of input features due to the nature of their regularization penalties (L1 and L2 norms) or kernel calculations (distance metrics). Features with larger numerical values could otherwise disproportionately influence the model fitting process.
+
+The chosen scaling method is **Z-score Standardization**. This method transforms each feature such that it has a mean of zero and a standard deviation of one. The formula for standardization is:
+
+$$x' = \frac{x - \mu}{\sigma}$$
+
+where $x$ is the original feature value, $\mu$ is the mean of the feature across the training dataset, and $\sigma$ is the standard deviation of the feature across the training dataset.
+
+A point of consideration is that Z-score standardization can result in negative values for transformed features that originally represented physically non-negative quantities (e.g., Area, Length, Drainage Density). This occurs when a particular transformed feature value is less than the mean of that transformed feature across the dataset. It is important to clarify that these negative scaled values **do not imply that the original physical quantity is negative**. They are simply a mathematical consequence of centering the data around zero as part of the scaling process. These scaled values are numerical inputs used by the machine learning algorithms, which operate in a mathematical space where negative numbers are standard, and the sign indicates the value's position relative to the mean. This loss of direct physical interpretability in the scaled values is a necessary trade-off for preparing the data effectively for the chosen algorithms and is a standard practice in the field of machine learning. The mean and standard deviation used for scaling will be computed solely from the training data, and these same values will be used to transform the validation and test datasets to prevent data leakage.
 
 ### Evaluation
 
-The performance of the trained machine learning models will be evaluated using the following metrics:
+A rigorous evaluation framework is essential to assess the performance of the trained machine learning models in predicting the ModClark parameters ($T_c$ and $R$) and, ultimately, their utility in facilitating accurate hydrological simulation. The evaluation will be conducted on an independent dataset of watersheds and storm events that were not used during model training or validation. The evaluation process encompasses two main components: direct evaluation of the predicted parameters and assessment of the models' ability to reproduce observed hydrographs using the predicted parameters.
 
-* **Direct Parameter Evaluation:**
-    * Root Mean Squared Error (RMSE) of $T_c$ and $R$.
-    * Mean Absolute Percentage Error (MAPE) of $T_c$ and $R$.
-    * Bias of $T_c$ and $R$.
+#### Direct Parameter Evaluation
 
-* **Hydrograph Evaluation:** The models' ability to predict accurate hydrographs will be assessed by comparing simulated hydrographs against observed hydrographs from a set of storm events held out for evaluation. The following metrics will be used:
-    * Nash-Sutcliffe Efficiency (NSE)
-    * Percentage difference in peak flow.
-    * Difference in time to peak.
-    * Difference in total volume.
+This component focuses on quantifying the accuracy of the machine learning models in predicting the values of $T_c$ and $R$ directly based on the geomorphological features. For each predicted parameter ($T_c$ and $R$), the following metrics will be calculated on the independent test dataset:
 
-    These metrics provide a comprehensive evaluation of the models' performance, assessing both their accuracy in predicting $T_c$ and $R$ and their ability to reproduce observed streamflow hydrographs.
+* **Root Mean Squared Error (RMSE):** The RMSE measures the average magnitude of the errors between the predicted parameter values and the observed (or calibrated) parameter values. It is sensitive to large errors due to the squaring of differences. A lower RMSE indicates better predictive performance.
+    $$
+    \text{RMSE} = \sqrt{\frac{1}{n} \sum_{i=1}^n (\hat{y}_i - y_i)^2}
+    $$
+    where $n$ is the number of observations in the test set (number of watersheds/events for which parameters are predicted), $y_i$ is the observed parameter value, and $\hat{y}_i$ is the predicted parameter value.
 
+* **Mean Absolute Percentage Error (MAPE):** The MAPE measures the average of the absolute percentage errors. It provides a relative measure of error, making it useful for comparing performance across different parameters or datasets with varying scales.
+    $$
+    \text{MAPE} = \frac{1}{n} \sum_{i=1}^n \left| \frac{y_i - \hat{y}_i}{y_i} \right| \times 100\%
+    $$
+    A lower MAPE indicates better performance. This metric requires that the observed parameter values ($y_i$) are non-zero.
 
-## Data (Anticipated)
+* **Bias:** The Bias measures the average difference between the predicted and observed parameter values. It indicates whether the model systematically over-predicts (positive bias) or under-predicts (negative bias) the parameter values across the test set.
+    $$
+    \text{Bias} = \frac{1}{n} \sum_{i=1}^n (\hat{y}_i - y_i)
+    $$
+    A bias value close to zero indicates less systematic error in parameter prediction.
 
-All data used in this project are publicly available, sourced from various reputable sources:
+These metrics provide a quantitative assessment of the accuracy, magnitude of errors, and systematic deviations in the direct prediction of $T_c$ and $R$ values by each machine learning model on the independent test set.
 
-| Data                                      | Source 
+#### Hydrograph Evaluation
 
-[This section will describe the types of data anticipated for use in this project. This may include:
-* **Physiographic data:** Digital Elevation Models (DEMs) to derive basin morphometric characteristics (area, slope, drainage density, etc.).
-* **Climatic data:** Rainfall data, temperature data, and potentially evapotranspiration data.
-* **Hydrologic data (potentially for validation):** Streamflow data from gauging stations.
-* **Soil data:** Information on soil types and properties within the basin.
-* **Land cover data:** Information on vegetation and land use patterns.
-The sources of this data (e.g., USGS, NASA, publicly available datasets) will also be mentioned.]
+Ultimately, the practical value of predicting $T_c$ and $R$ lies in their application within the Clark IUH model to simulate streamflow hydrographs. Therefore, a crucial part of the evaluation is to assess how well hydrographs simulated using the ML-predicted $T_c$ and $R$ values match observed hydrographs from independent storm events. For each watershed and associated storm event in the test dataset, the ModClark model will be run using the $T_c$ and $R$ values predicted by each trained ML model for that specific watershed. The resulting simulated hydrograph for each event will then be compared against the corresponding observed hydrograph using several widely accepted hydrological performance metrics, averaged across all test events ($N$):
 
-## Webapp Aplication
+* **Nash-Sutcliffe Efficiency (NSE):** The NSE is a widely used goodness-of-fit statistic that assesses the predictive power of hydrological models by comparing the model's performance to that of simply using the mean of the observed data. Calculated for each hydrograph comparison and then averaged across all test events. NSE ranges from $-\infty$ to 1, with NSE = 1 indicating a perfect match, NSE = 0 indicating the model's performance is no better than using the mean of the observed data, and NSE < 0 indicating the model performs worse than using the mean. The average NSE across events provides an overall measure of the models' hydrograph prediction skill.
+    $$
+    \text{Average NSE} = \frac{1}{N} \sum_{j=1}^N \left( 1 - \frac{\sum_{i=1}^{n_j} (Q_{obs,j,i} - Q_{sim,j,i})^2}{\sum_{i=1}^{n_j} (Q_{obs,j,i} - \bar{Q}_{obs,j})^2} \right)
+    $$
+    where $N$ is the number of storm events in the test set, $n_j$ is the number of time steps in the hydrograph for event $j$, $Q_{obs,j,i}$ and $Q_{sim,j,i}$ are the observed and simulated discharges at time step $i$ for event $j$, and $\bar{Q}_{obs,j}$ is the mean observed discharge for event $j$.
 
-[This section will provide information on the web application that will be developed as part of this project. It will describe how users can interact with the application to input basin characteristics and obtain estimated ModClark IUH parameters. Details about the technology stack used for the web application and instructions for accessing it will be included here.]
+* **Mean Absolute Percentage Error (MAPE) of Peak Flow:** This metric quantifies the average relative error in the prediction of the peak discharge rate across all test storm events. It assesses the models' skill in predicting the magnitude of flood peaks.
+    $$
+    \text{MAPE}_{\text{Peak Flow}} = \frac{1}{N} \sum_{j=1}^N \left| \frac{Q_{obs,peak,j} - Q_{sim,peak,j}}{Q_{obs,peak,j}} \right| \times 100\%
+    $$
+    where $N$ is the number of test events, $Q_{obs,peak,j}$ is the observed peak discharge for event $j$, and $Q_{sim,peak,j}$ is the simulated peak discharge for event $j$.
 
-## Usage
+* **Bias of Peak Flow:** This metric indicates whether the model systematically over-predicts (positive bias) or under-predicts (negative bias) the peak discharge across the test events.
+    $$
+    \text{Bias}_{\text{Peak Flow}} = \frac{1}{N} \sum_{j=1}^N (Q_{sim,peak,j} - Q_{obs,peak,j})
+    $$
 
-[This section will provide examples of how the developed machine learning model and the web application can be used. This might include steps for preparing input data, running the model or using the web interface, and interpreting the output (estimated $T_c$ and $R$ values).]
+* **Mean Absolute Error (MAE) of Time to Peak:** This metric quantifies the average magnitude of the error in predicting the timing of the maximum discharge across all test storm events. Accurate timing is crucial for flood forecasting and warning systems.
+    $$
+    \text{MAE}_{\text{Time to Peak}} = \frac{1}{N} \sum_{j=1}^N |T_{obs,peak,j} - T_{sim,peak,j}|
+    $$
+    where $N$ is the number of test events, $T_{obs,peak,j}$ is the observed time of peak for event $j$, and $T_{sim,peak,j}$ is the simulated time of peak for event $j$.
+
+* **Bias of Time to Peak:** This metric indicates whether the model systematically predicts the time to peak earlier (negative bias) or later (positive bias) than observed, on average, across the test events.
+    $$
+    \text{Bias}_{\text{Time to Peak}} = \frac{1}{N} \sum_{j=1}^N (T_{sim,peak,j} - T_{obs,peak,j})
+    $$
+
+* **Mean Absolute Percentage Error (MAPE) of Total Volume:** This metric quantifies the average relative error in the total runoff volume simulated for each storm event across the test set. It assesses the models' skill in maintaining water balance.
+    $$
+    \text{MAPE}_{\text{Volume}} = \frac{1}{N} \sum_{j=1}^N \left| \frac{V_{obs,j} - V_{sim,j}}{V_{obs,j}} \right| \times 100\%
+    $$
+    where $N$ is the number of test events, $V_{obs,j}$ is the observed total runoff volume for event $j$, and $V_{sim,j}$ is the simulated total runoff volume for event $j$.
+
+* **Bias of Total Volume:** This metric indicates whether the model systematically over-predicts (positive bias) or under-predicts (negative bias) the total runoff volume across the test events.
+    $$
+    \text{Bias}_{\text{Volume}} = \frac{1}{N} \sum_{j=1}^N (V_{sim,j} - V_{obs,j})
+    $$
+
+By combining the direct evaluation of predicted $T_c$ and $R$ values with the assessment of the resulting simulated hydrographs against observed data, this evaluation framework provides a comprehensive understanding of each machine learning model's performance. It evaluates both the accuracy of the parameter predictions and their ultimate utility in reproducing key features of the complex rainfall-runoff process (overall fit, peak flow magnitude, timing, and volume) within the ModClark conceptual framework. This dual approach ensures that the selected model is not only capable of estimating parameters but also enables hydrologically plausible and accurate simulations of streamflow.
+
+## Data
+
+All data utilized in this project are publicly available, sourced from various reputable institutions and repositories. The primary datasets acquired and their sources, formats, and intended uses are summarized in table below.
+
+| Data                              | Source                                                                                                                                                      | Format     | Description                                                                                                     | Documentation Link                                                                                                                                           |
+|-----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|-----------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| US Boundary - States              | [US Census Bureau TIGER/Line](https://www.census.gov/cgi-bin/geo/shapefiles/index.php?year=2024&layergroup=States+%28and+equivalent%29)                    | `.shp`     | State boundaries visualization                                                                                 | [TechDoc](https://www2.census.gov/geo/pdfs/maps-data/data/tiger/tgrshp2024/TGRSHP2024_TechDoc.pdf)                                                          |
+| US Boundary - Counties            | [US Census Bureau TIGER/Line](https://www.census.gov/cgi-bin/geo/shapefiles/index.php?year=2024&layergroup=Counties+%28and+equivalent%29)                  | `.shp`     | County boundaries visualization                                                                                | –                                                                                                                                                            |
+| Watershed Boundary      | [USGS TNM API](https://tnmaccess.nationalmap.gov/api/v1/docs)                                                                                              | `.shp`     | Delimit study region                                                                                           | [ScienceBase](https://www.sciencebase.gov/catalog/item/5a1632b3e4b09fc93dd171de)                                                                             |
+| Stream Gauge Stations            | [USGS](https://www.sciencebase.gov/catalog/item/63140610d34e36012efa3836)                                                                                   | `.shp`     | Stream gauge locations                                                                                         | –                                                                                                                                                            |
+| Precipitation Gauge Stations     | [NOAA - NCEI](https://gis.ncdc.noaa.gov/kml/precip_15.kmz)                                                                                                  | `.kmz`     | Precipitation station locations                                                                                | –                                                                                                                                                            |
+| Dam Location                     | [USACE NID](https://nid.sec.usace.army.mil/#/downloads)                                                                                                     | `.gpkg`    | Identify regulated watershed flow                                                                             | [Resilience Dataset](https://resilience.climate.gov/datasets/fedmaps::national-inventory-of-dams-1/about)                                                   |
+| World UTM Grid                   | [Esri](https://hub.arcgis.com/datasets/esri::world-utm-grid/explore)                                                                                       | `.GeoJSON` | Identify UTM zone                                                                                              | –                                                                                                                                                            |
+| Digital Elevation Model (DEM)    | [USGS Earth Explorer](https://earthexplorer.usgs.gov/)                                                                                                      | `.tiff`    | Watershed delineation & geomorphology                                                                         | [SRTM Doc](https://www.usgs.gov/centers/eros/science/usgs-eros-archive-digital-elevation-shuttle-radar-topography-mission-srtm-void)                        |
+| Water Body Raster                | [USGS](https://www.usgs.gov/centers/eros/science/usgs-eros-archive-digital-elevation-shuttle-radar-topography-mission-water)                              | `.tiff`    | Calculate water body percentages                                                                              | –                                                                                                                                                            |
+| Historical Land Cover    | [MRLC Viewer](https://www.mrlc.gov/viewer/)                                                                                                                 | `.GeoTIFF` | Extract land use features                                                                                      | [Doc](https://www.mrlc.gov/documentation)                                                                                                                    |
+| Streamflow Data                  | [USGS dataRetrieval](https://doi-usgs.github.io/dataRetrieval/)                                                                                             | `.json`    | Streamflow data for modeling                                                                                   | [Doc](https://doi-usgs.github.io/dataRetrieval/)                                                                                                                                                            |
+| Precipitation Data          | [NOAA FTP](https://www1.ncdc.noaa.gov/pub/data/hpd/auto/v2/beta/15min/)                                                                                     | `.csv`     | Storm event selection                                                                                          | [Readme](https://www1.ncdc.noaa.gov/pub/data/hpd/auto/v2/beta/15min/readme.15min.txt)                                                                       |
+| Soil Texture          | [ISRIC World Soil Texture Classifications](https://www.soilgrids.org/)                                                                                     | `.tif`     | Initiate parameters optmization                                                                                         | [Doc](https://www.earthdata.nasa.gov/dashboard/data-catalog/soil-texture)                                                                       |
+
+These datasets were acquired and processed to provide the necessary inputs for deriving watershed geomorphological characteristics and for hydrological model calibration and evaluation. They can be broadly categorized as follows:
+
+**Physiographic Data:** Digital Elevation Models (DEMs) form the core of the physiographic data, obtained from the U.S. Geological Survey (USGS) Earth Explorer. These raster datasets, typically in `.tiff` format, are fundamental for accurately delineating watershed boundaries and calculating a comprehensive suite of terrain-based morphometric parameters essential for characterizing basin form and drainage patterns. This includes properties like basin area, various slope indices (e.g., average watershed slope, channel slopes), basin relief, basin length (longest flow path), stream network metrics (e.g., stream length, drainage density), and shape factors (e.g., compactness coefficient, form factor, elongation ratio, ruggedness number). 
+
+**Boundary and Point Data**: Boundary files for states and counties from the US Census Bureau TIGER/Line® and watershed boundaries from the USGS National Map API, provided in `.shp` format, serve as crucial references for study region definition, and visualization. A World UTM Grid from [Esri](https://hub.arcgis.com/datasets/esri::world-utm-grid/explore) in `.GeoJSON` format was used for identifying appropriate spatial reference systems to ensure geometric accuracy. Dam location data from the USACE National Inventory of Dams (NID), provided as `.gpkg` files, were consulted to identify and potentially exclude watersheds with significant upstream flow regulation, ensuring the applicability of the Clark IUH conceptualization which is typically applied to unregulated basins. Stream gauge station locations from [USGS](https://www.sciencebase.gov/catalog/item/63140610d34e36012efa3836) provide the points at which streamflow is monitored and the outflow point at which the watershed is delineated. Precipitation gauge station locations, obtained from NOAA - NCEI ([https://gis.ncdc.noaa.gov/kml/precip_15.kmz](https://gis.ncdc.noaa.gov/kml/precip_15.kmz)), identify meteorological monitoring sites.
+
+**Hydrologic Data:** Hydro-meteorological observations are indispensable for calibrating and evaluating hydrological models. Historical streamflow time series data for the chosen stations were retrieved using the USGS dataRetrieval package, providing the observed hydrographs in `.json` format that serve as the target for model calibration and the benchmark for hydrograph evaluation.  Corresponding historical precipitation intensity data, such as 15-minute records accessed from NOAA FTP servers ([https://www1.ncdc.noaa.gov/pub/data/hpd/auto/v2/beta/15min/](https://www1.ncdc.noaa.gov/pub/data/hpd/auto/v2/beta/15min/)) in `.csv` format, are used for selecting significant storm events and providing the precipitation input to the ModClark hydrological model simulations.
+
+**Soil Data:** Information on soil properties is relevant for characterizing the infiltration and storage capacity of the watershed surface and subsurface. Soil texture data, was sourced from the ISRIC World Soil Texture Classifications ([https://www.soilgrids.org/](https://www.soilgrids.org/)) provided in `.tif` format, offering spatial information on soil composition. This data is utilized to inform initial estimates or refine the range of values for soil-related parameters, such as the constant precipitation loss rate, during the ModClark model optimization process.
+
+**Land Cover Data:** Land cover and land use patterns within a watershed significantly influence hydrological processes by affecting surface roughness, infiltration rates, evapotranspiration, and surface storage. Historical Land Cover data, such as the Multi-Resolution Land Characteristics (MRLC) data ([https://www.mrlc.gov/viewer/](https://www.mrlc.gov/viewer/)), typically available in `.GeoTIFF` format, is employed to extract land use features. This information is crucial for understanding how human activities and natural vegetation patterns impact runoff generation and is incorporated directly as input features for the machine learning models.
+
+The use of publicly available datasets from authoritative sources enhances the reproducibility of this research. The integration of these diverse data types provides the foundation for characterizing the study watersheds and supports the development and evaluation of machine learning models for hydrological parameter estimation.
+
 
 ## License
 
