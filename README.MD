@@ -453,9 +453,7 @@ To satisfy the linearity assumption of OLS MLR and Elastic Net, a systematic app
 1.  **Logarithmic Transformation:** This involves applying a logarithmic function (e.g., the natural logarithm) to the feature values ($x$). The transformation is $x' = \log(x)$. This method is particularly effective for features that have a skewed distribution (commonly right-skewed) or are believed to have a multiplicative or power-law relationship with the target variable, which is frequently the case for hydrological parameters related to basin size (Area, Lengths) and time. Log transformation linearizes relationships of the form $y = a \cdot x^b$ into $\log(y) = \log(a) + b \log(x)$, or $y = a \cdot b^x$ into $\log(y) = \log(a) + x \log(b)$. A prerequisite for the standard logarithmic transformation is that the feature values must be strictly positive.
 
 2.  **Power Transformation (Box-Cox):** If a logarithmic transformation does not sufficiently linearize the relationship or normalize the feature's distribution, the Box-Cox transformation will be applied. The Box-Cox transformation is a family of power transformations parameterized by $\lambda$, designed to find the optimal power to transform a feature to be as close to a normal distribution as possible, which often aids in linearizing relationships in regression. The transformation is defined as:
-    $$
-    x^{(\lambda)} = \begin{cases} \frac{x^\lambda - 1}{\lambda} & \text{if } \lambda \neq 0 \\ \log(x) & \text{if } \lambda = 0 \end{cases}
-    $$
+    $$x^{(\lambda)} = \begin{cases} \frac{x^\lambda - 1}{\lambda} & \text{if } \lambda \neq 0 \\ \log(x) & \text{if } \lambda = 0 \end{cases}$$
     The optimal value of $\lambda$ is estimated from the data. This transformation requires the input feature values to be strictly positive.
 
 3.  **Polynomial Features:** If neither logarithmic nor Box-Cox transformations result in a sufficiently linear relationship, polynomial features will be considered as a final attempt at linearization for OLS MLR and Elastic Net. This involves creating new features by raising existing features to a power (e.g., $x^2, x^3$) or generating interaction terms between features (e.g., $x_1 x_2$). Including polynomial terms up to a certain degree allows the linear model to fit polynomial curves in the original feature space. However, given the dataset size (150-250 data points) and the initial number of features (18), the creation of polynomial features must be approached cautiously. The degree of polynomial expansion and the inclusion of interaction terms will be limited to avoid a drastic increase in the total number of features, which could jeopardize model efficiency and increase the risk of overfitting the limited training data, despite the regularization provided by Elastic Net.
@@ -483,21 +481,16 @@ A rigorous evaluation framework is essential to assess the performance of the tr
 This component focuses on quantifying the accuracy of the machine learning models in predicting the values of $T_c$ and $R$ directly based on the geomorphological features. For each predicted parameter ($T_c$ and $R$), the following metrics will be calculated on the independent test dataset:
 
 * **Root Mean Squared Error (RMSE):** The RMSE measures the average magnitude of the errors between the predicted parameter values and the observed (or calibrated) parameter values. It is sensitive to large errors due to the squaring of differences. A lower RMSE indicates better predictive performance.
-    $$
-    \text{RMSE} = \sqrt{\frac{1}{n} \sum_{i=1}^n (\hat{y}_i - y_i)^2}
-    $$
+    $$\text{RMSE} = \sqrt{\frac{1}{n} \sum_{i=1}^n (\hat{y}_i - y_i)^2}$$
     where $n$ is the number of observations in the test set (number of watersheds/events for which parameters are predicted), $y_i$ is the observed parameter value, and $\hat{y}_i$ is the predicted parameter value.
 
 * **Mean Absolute Percentage Error (MAPE):** The MAPE measures the average of the absolute percentage errors. It provides a relative measure of error, making it useful for comparing performance across different parameters or datasets with varying scales.
-    $$
-    \text{MAPE} = \frac{1}{n} \sum_{i=1}^n \left| \frac{y_i - \hat{y}_i}{y_i} \right| \times 100\%
-    $$
+    $$\text{MAPE} = \frac{1}{n} \sum_{i=1}^n \left| \frac{y_i - \hat{y}_i}{y_i} \right| \times 100\%$$
     A lower MAPE indicates better performance. This metric requires that the observed parameter values ($y_i$) are non-zero.
 
 * **Bias:** The Bias measures the average difference between the predicted and observed parameter values. It indicates whether the model systematically over-predicts (positive bias) or under-predicts (negative bias) the parameter values across the test set.
-    $$
-    \text{Bias} = \frac{1}{n} \sum_{i=1}^n (\hat{y}_i - y_i)
-    $$
+    $$\text{Bias} = \frac{1}{n} \sum_{i=1}^n (\hat{y}_i - y_i)$$
+
     A bias value close to zero indicates less systematic error in parameter prediction.
 
 These metrics provide a quantitative assessment of the accuracy, magnitude of errors, and systematic deviations in the direct prediction of $T_c$ and $R$ values by each machine learning model on the independent test set.
@@ -507,43 +500,31 @@ These metrics provide a quantitative assessment of the accuracy, magnitude of er
 Ultimately, the practical value of predicting $T_c$ and $R$ lies in their application within the Clark IUH model to simulate streamflow hydrographs. Therefore, a crucial part of the evaluation is to assess how well hydrographs simulated using the ML-predicted $T_c$ and $R$ values match observed hydrographs from independent storm events. For each watershed and associated storm event in the test dataset, the ModClark model will be run using the $T_c$ and $R$ values predicted by each trained ML model for that specific watershed. The resulting simulated hydrograph for each event will then be compared against the corresponding observed hydrograph using several widely accepted hydrological performance metrics, averaged across all test events ($N$):
 
 * **Nash-Sutcliffe Efficiency (NSE):** The NSE is a widely used goodness-of-fit statistic that assesses the predictive power of hydrological models by comparing the model's performance to that of simply using the mean of the observed data. Calculated for each hydrograph comparison and then averaged across all test events. NSE ranges from $-\infty$ to 1, with NSE = 1 indicating a perfect match, NSE = 0 indicating the model's performance is no better than using the mean of the observed data, and NSE < 0 indicating the model performs worse than using the mean. The average NSE across events provides an overall measure of the models' hydrograph prediction skill.
-    $$
-    \text{Average NSE} = \frac{1}{N} \sum_{j=1}^N \left( 1 - \frac{\sum_{i=1}^{n_j} (Q_{obs,j,i} - Q_{sim,j,i})^2}{\sum_{i=1}^{n_j} (Q_{obs,j,i} - \bar{Q}_{obs,j})^2} \right)
-    $$
+    $$\text{Average NSE} = \frac{1}{N} \sum_{j=1}^N \left( 1 - \frac{\sum_{i=1}^{n_j} (Q_{obs,j,i} - Q_{sim,j,i})^2}{\sum_{i=1}^{n_j} (Q_{obs,j,i} - \bar{Q}_{obs,j})^2} \right)$$
+
     where $N$ is the number of storm events in the test set, $n_j$ is the number of time steps in the hydrograph for event $j$, $Q_{obs,j,i}$ and $Q_{sim,j,i}$ are the observed and simulated discharges at time step $i$ for event $j$, and $\bar{Q}_{obs,j}$ is the mean observed discharge for event $j$.
 
 * **Mean Absolute Percentage Error (MAPE) of Peak Flow:** This metric quantifies the average relative error in the prediction of the peak discharge rate across all test storm events. It assesses the models' skill in predicting the magnitude of flood peaks.
-    $$
-    \text{MAPE}_{\text{Peak Flow}} = \frac{1}{N} \sum_{j=1}^N \left| \frac{Q_{obs,peak,j} - Q_{sim,peak,j}}{Q_{obs,peak,j}} \right| \times 100\%
-    $$
+    $$\text{MAPE}_{\text{Peak Flow}} = \frac{1}{N} \sum_{j=1}^N \left| \frac{Q_{obs,peak,j} - Q_{sim,peak,j}}{Q_{obs,peak,j}} \right| \times 100\%$$
+
     where $N$ is the number of test events, $Q_{obs,peak,j}$ is the observed peak discharge for event $j$, and $Q_{sim,peak,j}$ is the simulated peak discharge for event $j$.
 
 * **Bias of Peak Flow:** This metric indicates whether the model systematically over-predicts (positive bias) or under-predicts (negative bias) the peak discharge across the test events.
-    $$
-    \text{Bias}_{\text{Peak Flow}} = \frac{1}{N} \sum_{j=1}^N (Q_{sim,peak,j} - Q_{obs,peak,j})
-    $$
+    $$\text{Bias}_{\text{Peak Flow}} = \frac{1}{N} \sum_{j=1}^N (Q_{sim,peak,j} - Q_{obs,peak,j})$$
 
 * **Mean Absolute Error (MAE) of Time to Peak:** This metric quantifies the average magnitude of the error in predicting the timing of the maximum discharge across all test storm events. Accurate timing is crucial for flood forecasting and warning systems.
-    $$
-    \text{MAE}_{\text{Time to Peak}} = \frac{1}{N} \sum_{j=1}^N |T_{obs,peak,j} - T_{sim,peak,j}|
-    $$
+    $$\text{MAE}_{\text{Time to Peak}} = \frac{1}{N} \sum_{j=1}^N |T_{obs,peak,j} - T_{sim,peak,j}|$$
     where $N$ is the number of test events, $T_{obs,peak,j}$ is the observed time of peak for event $j$, and $T_{sim,peak,j}$ is the simulated time of peak for event $j$.
 
 * **Bias of Time to Peak:** This metric indicates whether the model systematically predicts the time to peak earlier (negative bias) or later (positive bias) than observed, on average, across the test events.
-    $$
-    \text{Bias}_{\text{Time to Peak}} = \frac{1}{N} \sum_{j=1}^N (T_{sim,peak,j} - T_{obs,peak,j})
-    $$
+    $$\text{Bias}_{\text{Time to Peak}} = \frac{1}{N} \sum_{j=1}^N (T_{sim,peak,j} - T_{obs,peak,j})$$
 
 * **Mean Absolute Percentage Error (MAPE) of Total Volume:** This metric quantifies the average relative error in the total runoff volume simulated for each storm event across the test set. It assesses the models' skill in maintaining water balance.
-    $$
-    \text{MAPE}_{\text{Volume}} = \frac{1}{N} \sum_{j=1}^N \left| \frac{V_{obs,j} - V_{sim,j}}{V_{obs,j}} \right| \times 100\%
-    $$
+    $$\text{MAPE}_{\text{Volume}} = \frac{1}{N} \sum_{j=1}^N \left| \frac{V_{obs,j} - V_{sim,j}}{V_{obs,j}} \right| \times 100\%$$
     where $N$ is the number of test events, $V_{obs,j}$ is the observed total runoff volume for event $j$, and $V_{sim,j}$ is the simulated total runoff volume for event $j$.
 
 * **Bias of Total Volume:** This metric indicates whether the model systematically over-predicts (positive bias) or under-predicts (negative bias) the total runoff volume across the test events.
-    $$
-    \text{Bias}_{\text{Volume}} = \frac{1}{N} \sum_{j=1}^N (V_{sim,j} - V_{obs,j})
-    $$
+    $$\text{Bias}_{\text{Volume}} = \frac{1}{N} \sum_{j=1}^N (V_{sim,j} - V_{obs,j})$$
 
 By combining the direct evaluation of predicted $T_c$ and $R$ values with the assessment of the resulting simulated hydrographs against observed data, this evaluation framework provides a comprehensive understanding of each machine learning model's performance. It evaluates both the accuracy of the parameter predictions and their ultimate utility in reproducing key features of the complex rainfall-runoff process (overall fit, peak flow magnitude, timing, and volume) within the ModClark conceptual framework. This dual approach ensures that the selected model is not only capable of estimating parameters but also enables hydrologically plausible and accurate simulations of streamflow.
 
