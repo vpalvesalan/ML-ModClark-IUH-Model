@@ -407,9 +407,7 @@ MLR is not inherently sensitive to the scale of input features in terms of its p
 
 Elastic Net Regression is a type of penalized linear regression that combines the penalties of both Lasso (L1 regularization) and Ridge (L2 regularization). This approach modifies the standard MLR objective function by adding a penalty term proportional to both the sum of the absolute values of the coefficients (L1) and the sum of the squared values of the coefficients (L2). The objective function minimized is:
 
-$$
-\min_{\beta_0, \beta} \left\{ \frac{1}{N} \sum_{i=1}^N (y_i - (\beta_0 + x_i^T \beta))^2 + \lambda \left[ \alpha \|\beta\|_1 + (1-\alpha) \|\beta\|_2^2 \right] \right\}
-$$
+$$\min_{\beta_0, \beta} \left\{ \frac{1}{N} \sum_{i=1}^N (y_i - (\beta_0 + x_i^T \beta))^2 + \lambda \left[ \alpha \|\beta\|_1 + (1-\alpha) \|\beta\|_2^2 \right] \right\}$$
 
 Here, $N$ is the number of data points, $y_i$ is the observed value for the $i$-th data point, $x_i^T$ is the vector of features for the $i$-th data point, $\beta_0$ is the intercept, $\beta$ is the vector of coefficients, $\lambda$ is a non-negative regularization parameter controlling the overall strength of the penalty, and $\alpha$ is a parameter ($0 \le \alpha \le 1$) balancing the mix between the L1 penalty ($\|\beta\|_1$) and the L2 penalty ($\|\beta\|_2^2$). When $\alpha = 1$, Elastic Net becomes Lasso; when $\alpha = 0$, it becomes Ridge.
 
