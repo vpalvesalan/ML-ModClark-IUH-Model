@@ -1,0 +1,87 @@
+{
+  "map_styles": {
+    "watershed_boundary": {
+      "type": "polygon",
+      "fill": "#A6CEE3",
+      "alpha": 0.5,
+      "color": "#1F78B4",
+      "width": 1.5
+    },
+    "watershed_boundary_buffer_10km": {
+      "type": "polygon",
+      "fill": "#B2DFDB",
+      "alpha": 0.4,
+      "color": "#26A69A",
+      "width": 1.2
+    },
+    "watershed_boundary_buffer_30km": {
+      "type": "polygon",
+      "fill": "#C8E6C9",
+      "alpha": 0.3,
+      "color": "#66BB6A",
+      "width": 1.0
+    },
+    "thiessen_polygon": {
+      "type": "polygon",
+      "fill": "#D1C4E9",
+      "alpha": 0.5,
+      "color": "#7E57C2",
+      "width": 1.0
+    },
+    "precipitation_station": {
+      "type": "point",
+      "fill": "#F8BBD0",
+      "shape": "+",
+      "size": 6,
+      "color": "black",
+      "width": 1.0
+    },
+    "stream_gage": {
+      "type": "point",
+      "fill": "#FFE0B2",
+      "shape": "s",
+      "size": 6,
+      "color": "#FB8C00",
+      "width": 1.0
+    },
+    "dam": {
+      "type": "point",
+      "fill": "#CFD8DC",
+      "alpha": 0.8,
+      "color": "#607D8B",
+      "width": 1.5,
+      "shape":"^"
+    },
+    "hydrograph_main": {
+      "type": "line",
+      "fill": "#546E7A",
+      "line_width": 2.0,
+      "line_type": "solid"
+    },
+    "hydrograph_second": {
+      "type": "line",
+      "fill": "#78909C",
+      "line_width": 1.0,
+      "line_type": "solid"
+    },
+    "us_states": {
+      "type": "polygon",
+      "fill": "#FFFFFF",
+      "alpha": 0.0,
+      "color": "#90A4AE",
+      "width": 1.0
+    },
+    "us_counties": {
+      "type": "polygon",
+      "fill": "#FFFFFF",
+      "alpha": 0.0,
+      "color": "#B0BEC5",
+      "width": 0.5
+    },
+    "text": {
+    "type": "text",
+    "color": "#424242",
+    "size": 8
+    }
+  }
+}
