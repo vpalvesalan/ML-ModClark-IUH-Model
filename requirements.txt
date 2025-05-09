@@ -4,3 +4,6 @@ scikit-learn==1.6.1
 matplotlib==3.10.1
 geopandas==1.0.1
 plotnine==0.14.5
+shapely==2.1.0
+requests==2.32.3
+dotenv==0.9.9
