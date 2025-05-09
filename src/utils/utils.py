@@ -13,10 +13,10 @@ def measure_execution_time(func):
         end_time = time()  # Record end time
         execution_time = end_time - start_time
         if execution_time < 60:
-            print(f"Function '{func.__name__}' executed in {execution_time:.4f} seconds.")
+            print(f"\nFunction '{func.__name__}' executed in {execution_time:.4f} seconds.")
         else:
             minutes, seconds = divmod(execution_time, 60)
-            print(f"Function '{func.__name__}' executed in {int(minutes)} minutes and {seconds:.4f} seconds.\n")
+            print(f"\nFunction '{func.__name__}' executed in {int(minutes)} minutes and {seconds:.4f} seconds.\n")
     
         return result
 
