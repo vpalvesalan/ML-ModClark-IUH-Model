@@ -1,27 +1,47 @@
 import pandas as pd
+from src.preprocessing.generate_time_sequence import generate_15min_sequence
 
-def unpivot_preciptation_data(df: pd.DataFrame) -> pd.DataFrame:
+def clean_preciptation_data(df: pd.DataFrame, fill_missing_dates=True) -> pd.DataFrame:
     """
-    Transforms a precipitation wide-format DataFrame into a long-format DataFrame by unpivoting columns, 
+    Transforms a precipitation wide-format DataFrame into a long-format DataFrame by unpivoting columns,
     cleaning the data, and restructuring it for easier analysis.
 
     The function performs the following steps:
-    1. Drops unnecessary columns.
-    2. Melts the DataFrame to long format based on the 'DATE' column.
-    3. Combines 'DATE' and 'Time_Attribute' for a new timestamp.
-    4. Extracts 'Attribute' from the 'Time_Attribute' column.
-    5. Pivots the data to separate out different measurements.
-    6. Renames the columns for clarity.
-    7. Replace -9999 (null values) by NA
-    8. Filter out observation prior to year 2014
-
-    Args:
+    1. Drops initial unnecessary columns ('STATION', 'ELEMENT', 'LATITUDE', 'LONGITUDE', 'ELEVATION',
+       'DlySum', 'DlySumMF', 'DlySumQF', 'DlySumS1', 'DlySumS2').
+    2. Melts the DataFrame from wide to long format, using 'DATE' as the identifier variable and
+       precipitation measurement columns as value variables.
+    3. Combines the 'DATE' column and the time portion extracted from the 'Time_Attribute' column
+       to create a full timestamp string.
+    4. Extracts the measurement attribute (e.g., 'Val', 'MF', 'QF') from the 'Time_Attribute' column.
+    5. Drops the original 'Time_Attribute' column.
+    6. Pivots the DataFrame to wide format based on the extracted 'Attribute', using the combined
+       timestamp as the index and 'Value' as the values.
+    7. Removes the columns name attribute resulting from the pivot.
+    8. Renames the pivoted columns for clarity ('DATE' to 'date', 'Val' to 'height', 'MF' to
+       'measurement_flag', 'QF' to 'quality_flag').
+    9. Drops unnecessary columns ('S1', 'S2') that resulted from the pivot.
+    10. Converts the 'date' column to datetime objects.
+    11. Replaces specific null indicators (-9999) in the 'height' column with pandas NA.
+    12. Replaces any negative values in the 'height' column with pandas NA.
+    13. Replaces specific quality flag values ('N') in the 'quality_flag' column with pandas NA.
+    14. Filters the DataFrame to include only observations from January 1, 2014, onwards.
+    15. Generates a complete sequence of 15-minute intervals covering the date range of the filtered data.
+    16. Merges the data with the generated time sequence to explicitly include rows for missing time intervals.
+    17. Cleans up columns after the merge (drops the old 'date' column and renames 'seq' to 'date').
+    18. Converts the 'height' column to a numeric type, coercing errors.
+    19. Converts 'height' values from hundredths to the standard unit (assuming inches/mm) by dividing by 100.
+    20. Ensures the 'height' column has a float data type.
+    
     -----
-    df (pd.DataFrame): The input DataFrame to be unpivoted.
-
+    Args:
+        df (pd.DataFrame): The input DataFrame to be transformed, expected to be in a wide format
+                           from precipitation data sources (like GHCN-D with time components).
+        fill_missing_dates (bool): If True, fills in missing time intervals with NaN values for
+    -----                           the 'height' column. Default is True.
     Returns:
-    --------
-    pd.DataFrame: The transformed long-format DataFrame with measurements separated by attribute.
+        pd.DataFrame: The transformed long-format DataFrame with measurements separated by attribute,
+                      cleaned, filtered, and with missing time intervals filled.
     """
 
     columns_to_trop = ['STATION', 'ELEMENT','LATITUDE', 'LONGITUDE', 'ELEVATION', 'DlySum', 'DlySumMF', 'DlySumQF', 'DlySumS1', 'DlySumS2']
@@ -74,9 +94,32 @@ def unpivot_preciptation_data(df: pd.DataFrame) -> pd.DataFrame:
 
     # Replace failed to check negative precipitation with NA
     df_final['quality_flag'] = df_final['quality_flag'].replace('N', pd.NA)
-    
+
     # Filter by date
     cutoff_date = pd.to_datetime('20140101')
     df_final = df_final[df_final['date']>=cutoff_date]
-    
+
+    if df_final.empty:
+        raise ValueError("The DataFrame is empty after filtering by date. Please check the input data.")
+
+    # Fill in missing dates
+    if fill_missing_dates:
+        # Generate a complete sequence of 15-minute intervals
+        # covering the date range of the filtered data
+        time_seq = generate_15min_sequence(df_final['date'].min(), df_final['date'].max())
+        filled_seq_df = pd.DataFrame({'seq':time_seq}).merge(
+            df_final,
+            how='left',
+            left_on='seq',
+            right_on='date'
+        )
+        filled_seq_df = filled_seq_df.drop(columns=['date'])
+        filled_seq_df = filled_seq_df.rename(columns={'seq':'date'})
+        df_final = filled_seq_df.copy()
+
+    # Convert height values to in and height dtype to float
+    df_final['height'] = pd.to_numeric(df_final['height'], errors='coerce')
+    df_final['height'] = df_final['height']/100
+    df_final['height'] = df_final['height'].astype(float)
+
     return df_final
