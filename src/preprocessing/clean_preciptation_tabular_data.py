@@ -1,8 +1,8 @@
 import pandas as pd
 
-def unpivot_preciptation_v2_data(df: pd.DataFrame) -> pd.DataFrame:
+def unpivot_preciptation_data(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Transforms a v2 precipitation wide-format DataFrame into a long-format DataFrame by unpivoting columns, 
+    Transforms a precipitation wide-format DataFrame into a long-format DataFrame by unpivoting columns, 
     cleaning the data, and restructuring it for easier analysis.
 
     The function performs the following steps:
