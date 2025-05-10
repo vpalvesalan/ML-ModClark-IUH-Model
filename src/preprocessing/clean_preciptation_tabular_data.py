@@ -33,9 +33,9 @@ def unpivot_preciptation_data(df: pd.DataFrame) -> pd.DataFrame:
 
     # Melting to long format
     df_long = df.melt(id_vars=id_vars,
-                                        value_vars=value_vars,
-                                        var_name='Time_Attribute',
-                                        value_name='Value')
+                        value_vars=value_vars,
+                        var_name='Time_Attribute',
+                        value_name='Value')
 
     # Add Time to DATE column and extract Attribute from 'Time_Attribute'
     df_long['DATE'] = df_long['DATE'].astype(str) + ' ' + df_long['Time_Attribute'].str[:4]
@@ -54,12 +54,14 @@ def unpivot_preciptation_data(df: pd.DataFrame) -> pd.DataFrame:
     df_final.columns.name = None 
     df_final = df_final.rename({
         'DATE':'date',
-        'Val':'height'
+        'Val':'height',
+        'MF':'measurement_flag',
+        'QF':'quality_flag',
     }, axis='columns')
 
     # Drop columns
-    keep_columns = ['date','height']
-    df_final = df_final[keep_columns]
+    drop_columns = ['S1','S2']
+    df_final = df_final.drop(columns=drop_columns)
 
     # Parse datetime column
     df_final['date'] = pd.to_datetime(df_final['date'], format='%Y-%m-%d %H%M')
@@ -67,6 +69,12 @@ def unpivot_preciptation_data(df: pd.DataFrame) -> pd.DataFrame:
     # Replace null values
     df_final['height'] = df_final['height'].replace(-9999,pd.NA)
 
+    # Replace any possible negative values with NA
+    df_final['height'] = df_final['height'].where(df_final['height'] >= 0, pd.NA)
+
+    # Replace failed to check negative precipitation with NA
+    df_final['quality_flag'] = df_final['quality_flag'].replace('N', pd.NA)
+    
     # Filter by date
     cutoff_date = pd.to_datetime('20140101')
     df_final = df_final[df_final['date']>=cutoff_date]
