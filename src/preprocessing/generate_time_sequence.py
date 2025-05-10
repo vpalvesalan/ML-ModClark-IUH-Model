@@ -7,4 +7,4 @@ def generate_15min_sequence(date_min, date_max):
     if isinstance(date_max, str):
         date_max = datetime.strptime(date_max, '%Y%m%d %H:%M:%S')
     
-    return pd.date_range(start=date_min, end=date_max, freq='15min').to_pydatetime().tolist()
+    return pd.date_range(start=date_min, end=date_max, freq='15min')
