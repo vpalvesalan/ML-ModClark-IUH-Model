@@ -7,3 +7,4 @@ plotnine==0.14.5
 shapely==2.1.0
 requests==2.32.3
 dotenv==0.9.9
+pyarrow==17.0.0
