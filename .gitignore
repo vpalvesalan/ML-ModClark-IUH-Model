@@ -2,6 +2,8 @@
 *.env
 venv/
 data/bronze
+data/silver/tabular
+.DS_Store
 
 
 # Byte-compiled / optimized / DLL files
