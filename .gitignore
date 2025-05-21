@@ -3,6 +3,7 @@
 venv/
 data/bronze
 data/silver/tabular
+data/silver/geo/raster
 .DS_Store
 
 
