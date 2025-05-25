@@ -2,8 +2,7 @@
 *.env
 venv/
 data/bronze
-data/silver/tabular
-data/silver/geo/raster
+data/silver
 .DS_Store
 
 
