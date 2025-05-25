@@ -1,7 +1,7 @@
 import geopandas as gpd
 from shapely.geometry import box
 
-def get_nad83_utm_epsg(gdf : gpd.GeoDataFrame,  print_log = True) -> int:
+def get_nad83_utm_epsg(gdf : gpd.GeoDataFrame,  print_log = False) -> int:
     """
     Determine the NAD83 UTM EPSG code for a GeoPandas object in NAD83 (EPSG:4269).
     If the object spans multiple UTM zones, select the zone with the most overlap.
@@ -35,7 +35,8 @@ def get_nad83_utm_epsg(gdf : gpd.GeoDataFrame,  print_log = True) -> int:
     
     # If in the same zone
     if min_zone == max_zone:
-        print(f"Geometry falls in UTM Zone {min_zone}")
+        if print_log:
+            print(f"Geometry falls entirely in UTM Zone {min_zone}")
         # NAD83 UTM zones: EPSG 269xx where xx is the zone number (04-19 for continental US)
         return 26900 + min_zone
     
