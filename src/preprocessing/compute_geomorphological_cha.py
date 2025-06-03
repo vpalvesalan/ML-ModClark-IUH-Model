@@ -3,7 +3,6 @@ from shapely.geometry import MultiPolygon, Polygon
 import geopandas as gpd
 import numpy as np
 import rasterio
-import rasterio.features
 import rasterio.mask
 from shapely.geometry import shape
 from scipy.ndimage import distance_transform_edt
@@ -11,6 +10,8 @@ import math
 from rasterio.mask import mask
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 import numpy as np
+from typing import List
+
 
 
 # ---------- FUNCTION FOR PREPROCESSING ---------- #
@@ -141,6 +142,92 @@ def preprocess_mrlc(mrlc_path, watershed_gdf, dem_resolution, output_path=None):
                 dst.write(dest)
         
         return dest, kwargs
+    
+
+def identify_main_streamline(profiles: List[int], connections: dict) -> List[bool]:
+    """Identifies the main streamline within a river network based on segment connectivity and length.
+
+    The main streamline is determined by finding the longest continuous path of river segments
+    from a source (headwater) to the outlet of the river network. The length is calculated
+    based on the number of unique cells in the segments, accounting for overlapping cells
+    at segment connections.
+
+    Args:
+        profiles (list): A list where each element represents a river segment. Each segment
+                         is a list of channel indices (cells) that constitute that part of the
+                         river. This is typically the output of `pyshed.grid.extract_profiles`.
+        connections (dict): A dictionary describing the connectivity between river segments.
+                            Keys are segment indices, and values are the segment indices
+                            immediately downstream. The outlet segment is identified as a
+                            segment that flows into itself (e.g., `connections[segment_id] == segment_id`).
+                            This is typically the output of `pyshed.grid.extract_profiles`.
+
+    Returns:
+        list: A boolean list of the same length as `profiles`. Each element is `True` if the
+              corresponding river segment is part of the identified main streamline, and `False` otherwise.
+
+    Raises:
+        ValueError: If no outlet segment is found within the `connections` dictionary.
+    """
+    # Find the outlet segment (where segment flows into itself)
+    outlet = None
+    for segment, downstream in connections.items():
+        if segment == downstream:
+            outlet = segment
+            break
+    if outlet is None:
+        raise ValueError("No outlet found in connections.")
+    
+    # Identify source segments (segments not downstream of any other segment)
+    all_segments = set(connections.keys())
+    downstream_segments = set(connections.values())
+    sources = all_segments - downstream_segments
+    
+    # Memoized function to compute path length in unique cells from segment to outlet
+    length_memo = {}
+    
+    def path_length(segment):
+        if segment == outlet:
+            return len(profiles[segment])
+        if segment in length_memo:
+            return length_memo[segment]
+        downstream = connections[segment]
+        # Subtract 1 to account for overlapping cell at connection
+        length_memo[segment] = len(profiles[segment]) + path_length(downstream) - 1
+        return length_memo[segment]
+    
+    # Find the source with the longest path to the outlet
+    max_length = -1
+    main_source = None
+    for source in sources:
+        length = path_length(source)
+        if length > max_length:
+            max_length = length
+            main_source = source
+    
+    # Trace the main streamline from the main source to the outlet
+    main_streamline_segments = []
+    current = main_source
+    while current != outlet:
+        main_streamline_segments.append(current)
+        current = connections[current]
+    main_streamline_segments.append(outlet)
+    
+    # Create a boolean list indicating main streamline segments
+    is_main = [segment in main_streamline_segments for segment in range(len(profiles))]
+    
+    return is_main
+
+def determine_threshold_river_network(area_km2, k=10, min_thresh=30, max_thresh=1000):
+    """
+    Determine the threshold for the accumulation raster based on watershed area.
+    This function calculates accumulation threshold value, for extracting river network,
+    based on the area of the watershed in square kilometers.
+    """
+    threshold = int(k * area_km2)
+
+    return max(min(threshold, max_thresh), min_thresh)
+
 
 
 # ---------- BASIC UTILS ---------- #
