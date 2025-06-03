@@ -7,6 +7,20 @@
       "color": "#1F78B4",
       "width": 1.5
     },
+    "mainstream": {
+      "type": "line",
+      "fill": "#000080",
+      "alpha": 1,
+      "color": "#000080",
+      "width": 1.5
+    },
+    "tributaries": {
+      "type": "line",
+      "fill": "#B0C4DE",
+      "alpha": 1,
+      "color": "#B0C4DE",
+      "width": 1.2
+    },
     "watershed_boundary_buffer_10km": {
       "type": "polygon",
       "fill": "#B2DFDB",
