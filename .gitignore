@@ -3,6 +3,7 @@
 venv/
 data/bronze
 data/silver
+data/gold/geo
 .DS_Store
 
 
