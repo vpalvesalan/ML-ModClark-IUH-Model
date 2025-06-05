@@ -1,3 +1,4 @@
+from warnings import WarningMessage
 import geopandas as gpd
 from shapely.geometry import MultiPolygon, Polygon
 import geopandas as gpd
@@ -11,6 +12,9 @@ from rasterio.mask import mask
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 import numpy as np
 from typing import List
+import re
+import warnings
+import pandas as pd
 
 
 
@@ -218,7 +222,7 @@ def identify_main_streamline(profiles: List[int], connections: dict) -> List[boo
     
     return is_main
 
-def determine_threshold_river_network(area_km2, k=10, min_thresh=30, max_thresh=1000):
+def determine_threshold_river_network(area_km2, k=8, min_thresh=30, max_thresh=1000):
     """
     Determine the threshold for the accumulation raster based on watershed area.
     This function calculates accumulation threshold value, for extracting river network,
@@ -294,6 +298,61 @@ def degree_res_to_meter_res(degree_res: Tuple[float, float], lon: float, lat: fl
 
 # ---------- FUNCTIONS FOR EACH METRIC ---------- #
 
+def compute_area(watershed_gdf: gpd.GeoDataFrame) -> float:
+    """
+    Compute the total area in square meters of the watershed.
+
+    Parameters:
+        watershed_gdf (gpd.GeoDataFrame): geopandas of watershed boundary.
+
+    Returns:
+        float: Area in square meters.
+    """
+    if not watershed_gdf.crs or not watershed_gdf.crs.is_projected:
+        raise ValueError("Watershed boundary must be in a projected CRS to compute area in square meters.")
+    
+    return watershed_gdf.area.sum()
+
+def compute_stream_length(stream_gdf: gpd.GeoDataFrame, mainstream_col: str = 'mainstream') -> Tuple[float, float]:
+    """
+    Compute mainstream length and total length of stream channels in the watershed.
+
+    Parameters:
+        stream_gdf (gpd.GeoDataFrame): GeoDataFrame of stream lines.
+        mainstream_col (str): Column name of boolean feature indicating mainstream channels (default is 'mainstream').
+
+    Returns:
+        Tuple[float, float]: Mainstream length and total length of stream channels in meters.
+    """
+    if not stream_gdf.crs or not stream_gdf.crs.is_projected:
+        raise ValueError("Stream lines must be in a projected CRS to compute length in meters.")
+    
+    if mainstream_col not in stream_gdf.columns:
+        warnings.warn(f"Column '{mainstream_col}' not found in stream GeoDataFrame. Assuming all streams are mainstream.")
+        stream_gdf[mainstream_col] = True
+
+    if not pd.api.types.is_bool_dtype(stream_gdf[mainstream_col]):
+        warnings.warn(f"Column '{mainstream_col}' is not boolean. Assuming all streams are mainstream.")
+        stream_gdf[mainstream_col] = True
+
+    total_length = stream_gdf.length.sum()
+    mainstream_length = stream_gdf[stream_gdf[mainstream_col]].length.sum()
+    
+    return mainstream_length, total_length
+
+
+def compute_drainage_density(stream_length, area):
+    """
+    Compute Drainage Density.
+
+    Parameters:
+        stream_length (float): Total length of stream channels (m).
+        area (float): Total area of the watershed (m²).
+
+    Returns:
+        float: Drainage density (m⁻¹).
+    """
+    return stream_length / area
 
 def compute_land_cover_percentages(nlcd_array: np.ndarray, return_names: bool = False) -> dict:
 
@@ -350,45 +409,6 @@ def compute_land_cover_percentages(nlcd_array: np.ndarray, return_names: bool = 
 
     return percentages
 
-def compute_area(boundary_gpkg):
-    """
-    Compute the total area of the watershed.
-
-    Parameters:
-    boundary_gpkg (str): Path to the GPKG file of watershed boundary.
-
-    Returns:
-    float: Area in square meters.
-    """
-    gdf = gpd.read_file(boundary_gpkg)
-    gdf = gdf.to_crs(epsg=3395)  # Project to metric system
-    return gdf.area.sum()
-
-def compute_drainage_density(stream_length, area):
-    """
-    Compute Drainage Density.
-
-    Parameters:
-    stream_length (float): Total length of stream channels (m).
-    area (float): Total area of the watershed (m²).
-
-    Returns:
-    float: Drainage density (m⁻¹).
-    """
-    return stream_length / area
-
-def compute_stream_length(stream_gdf):
-    """
-    Compute length of the main stream channel.
-
-    Parameters:
-    stream_gdf (gpd.GeoDataFrame): GeoDataFrame of stream lines.
-
-    Returns:
-    float: Length of main channel (m).
-    """
-    stream_gdf = stream_gdf.to_crs(epsg=3395)
-    return stream_gdf.length.max()
 
 def compute_basin_length(flow_direction_raster, mask_raster):
     """
