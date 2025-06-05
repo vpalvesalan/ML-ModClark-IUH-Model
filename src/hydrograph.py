@@ -67,10 +67,8 @@ def hydrograph1(df, streamflow_col, time_col, streamflow2_col=None, precip_col=N
                 align="center",
                 zorder=1,
             )
-        
         # Set limits to invert the precipitation axis
-        max_precip = np.nanmax(precip)
-        ax2.set_ylim(5 * max_precip, 0)  # This inverts the axis, placing 0 at the top
+        max_precip = np.nanmax(precip, precip2)
         
         # Custom ticks for precipitation
         r = max(np.ceil(-np.log10(max_precip)), 0)
@@ -78,6 +76,17 @@ def hydrograph1(df, streamflow_col, time_col, streamflow2_col=None, precip_col=N
         num_ticks = 5 if tick_max >= 10 * 10*(-r) else int(max_precip * 10*r + 1) + 1
         ax2.set_yticks(np.linspace(0, tick_max, num_ticks))
         ax2.set_ylabel(f"Precipitation ({P_units})" if P_units else "Precipitation")
+
+        if True:
+            # Add legend for precipitation
+            precip_label = f"Precipitation ({P_units})" if P_units else "Precipitation"
+            precip2_label = f"Precipitation 2 ({P_units})" if P_units else "Precipitation 2"
+            handles = [plt.Rectangle((0,0),1,1, facecolor="skyblue", edgecolor="navy", alpha=0.8)]
+            labels = [precip_label]
+            if precip2 is not None:
+                handles.append(plt.Rectangle((0,0),1,1, facecolor="lightcoral", edgecolor="darkred", alpha=0.6))
+                labels.append(precip2_label)
+            ax2.legend(handles, labels, loc="upper left", frameon=False, fontsize=10, bbox_to_anchor=(0, 0.88))
         
 
         # Plot primary streamflow
@@ -107,7 +116,11 @@ def hydrograph1(df, streamflow_col, time_col, streamflow2_col=None, precip_col=N
     if streamflow2 is not None:
         all_streams.append(streamflow2)
     max_stream = np.nanmax(np.concatenate(all_streams))
-    ax1.set_ylim(0, max_stream * 1.2)
+    ax1.set_ylim(0, max_stream/0.75)
+
+    # Configure inverted ppt limit axis with some padding
+    ppt_tick_max = ax1.get_ylim()[1] * max_precip / (ax1.get_ylim()[1] - max_stream)
+    ax2.set_ylim(1.1 * ppt_tick_max, 0) 
 
     # Y-axis label for streamflow
     if S_units in ["m3/s", "m3s"]:
