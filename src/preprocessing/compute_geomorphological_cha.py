@@ -15,6 +15,7 @@ from typing import List
 import re
 import warnings
 import pandas as pd
+from pysheds.grid import Grid
 
 
 
@@ -315,7 +316,7 @@ def compute_area(watershed_gdf: gpd.GeoDataFrame) -> float:
 
 def compute_stream_length(stream_gdf: gpd.GeoDataFrame, mainstream_col: str = 'mainstream') -> Tuple[float, float]:
     """
-    Compute mainstream length and total length of stream channels in the watershed.
+    Compute the mainstream length and total length of stream channels in the watershed.
 
     Parameters:
         stream_gdf (gpd.GeoDataFrame): GeoDataFrame of stream lines.
@@ -353,6 +354,62 @@ def compute_drainage_density(stream_length, area):
         float: Drainage density (m⁻¹).
     """
     return stream_length / area
+
+import rasterio
+import geopandas as gpd
+
+def calculate_basin_length(acc: Grid.accumulation, gdf: gpd.GeoDataFrame) -> float:
+    """
+    Calculate the basin length using a pysheds accumulation raster and a GeoPandas linestring object.
+    
+    Parameters:
+        - grid (Grid.accumulation): pysheds Grid object containing the accumulation raster
+        - gdf (gpd.GeoDataFrame): GeoDataFrame with linestring geometries, 'id' column for segment sequence, 
+           and 'mainstream' boolean column for mainstream segments.
+    
+    Returns:
+        - float: Basin length which is defined as the sum of mainstream length and distance to ridge from the most ditant
+        point in the mainstream segment.
+    """
+    original_gd
+    if mainstream_gdf.crs != acc.crs:
+        mainstream_gdf = mainstream_gdf.to_crs(acc.crs) 
+    mainstream_gdf = gdf[gdf['mainstream']]
+
+    # Identify the first segment (assuming smallest 'id' is the first in sequence)
+    first_segment = mainstream_gdf.loc[mainstream_gdf['id'].idxmin()]
+    line = first_segment.geometry
+
+    point_start = line.coords[0]  # Starting point (x, y)
+    point_end = line.coords[-1]   # Ending point (x, y)
+    
+    accumulation_array = np.asarray(acc)
+    
+    # Helper function to get raster value at a point
+    def get_value_at_point(array, point, affine):
+        row, col = rasterio.transform.rowcol(affine, point[0], point[1])
+        return array[row, col]
+    
+    accum_start = get_value_at_point(accumulation_array, point_start, acc.affine)
+    accum_end = get_value_at_point(accumulation_array, point_end, acc.affine)
+
+    point_upstream = point_start if accum_start < accum_end else point_end
+    
+    # Compute the distance to ridge grid
+    grid = Grid.from_raster(acc)
+    acc = grid.from_raster(acc)
+    distance_grid = acc.distance_to_ridge()
+    
+    # Get the distance to ridge for the upstream point
+    ridge_distance = get_value_at_point(distance_grid, point_upstream, grid.affine)
+    
+    # Calculate the total mainstream length by summing lengths of all mainstream segments
+    mainstream_length = mainstream_gdf['geometry'].length.sum()
+    
+    # Compute basin length as the sum of mainstream length and ridge distance
+    basin_length = mainstream_length + ridge_distance
+    
+    return basin_length
 
 def compute_land_cover_percentages(nlcd_array: np.ndarray, return_names: bool = False) -> dict:
 
@@ -409,21 +466,6 @@ def compute_land_cover_percentages(nlcd_array: np.ndarray, return_names: bool = 
 
     return percentages
 
-
-def compute_basin_length(flow_direction_raster, mask_raster):
-    """
-    Compute basin length (longest flow path).
-
-    Parameters:
-    flow_direction_raster (str): Path to flow direction raster.
-    mask_raster (str): Path to mask raster.
-
-    Returns:
-    float: Basin length in meters.
-    """
-    # Placeholder: actual implementation requires D8 flow tracing
-    # Use pysheds or tauDEM to find longest flow path
-    return NotImplemented
 
 def compute_centroidal_flowpath(boundary_gpkg, outlet_point):
     """
