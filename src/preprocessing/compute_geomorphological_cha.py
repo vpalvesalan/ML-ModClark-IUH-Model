@@ -1,5 +1,6 @@
 from warnings import WarningMessage
 import geopandas as gpd
+from matplotlib.pylab import f
 from shapely.geometry import MultiPolygon, Polygon
 import geopandas as gpd
 import numpy as np
@@ -15,8 +16,8 @@ from typing import List
 import re
 import warnings
 import pandas as pd
+from pysheds.view import Raster
 from pysheds.grid import Grid
-
 
 
 # ---------- FUNCTION FOR PREPROCESSING ---------- #
@@ -265,13 +266,13 @@ def degree_res_to_meter_res(degree_res: Tuple[float, float], lon: float, lat: fl
     -----------
     degree_res : tuple of float
         Resolution in degrees (x_res_deg, y_res_deg).
-    lon : float
+    lon: float
         Longitude of the reference point (e.g., watershed centroid) (shoud be in same crs of source of degree_res). Usualally watershed_gdf_geometry.centroid
-    lat : float
+    lat: float
         Latitude of the reference point.
-    from_crs : pyproj.CRS
+    from_crs: pyproj.CRS
         Source geographic CRS (usually EPSG:4269 for NAD83).
-    target_crs : pyproj.CRS
+    target_crs: pyproj.CRS
         Target projected CRS for conversion (must be in meters), usually watershed_gdf.crs.
 
     Returns:
@@ -358,22 +359,27 @@ def compute_drainage_density(stream_length, area):
 import rasterio
 import geopandas as gpd
 
-def calculate_basin_length(acc: Grid.accumulation, gdf: gpd.GeoDataFrame) -> float:
+def compute_basin_length(acc: Raster, ridge_dist: Raster, grid: Grid, gdf: gpd.GeoDataFrame) -> float:
     """
     Calculate the basin length using a pysheds accumulation raster and a GeoPandas linestring object.
     
     Parameters:
-        - grid (Grid.accumulation): pysheds Grid object containing the accumulation raster
+        - acc (Raster): pysheds accumulation raster
+        - ridge_dist (Raster): pysheds ridge distance raster
         - gdf (gpd.GeoDataFrame): GeoDataFrame with linestring geometries, 'id' column for segment sequence, 
-           and 'mainstream' boolean column for mainstream segments.
+           and 'mainstream' boolean column for mainstream segments. gdf must be projected to meters.
     
     Returns:
         - float: Basin length which is defined as the sum of mainstream length and distance to ridge from the most ditant
         point in the mainstream segment.
     """
-    original_gd
-    if mainstream_gdf.crs != acc.crs:
-        mainstream_gdf = mainstream_gdf.to_crs(acc.crs) 
+
+    if not gdf.crs.is_projected:
+        raise ValueError("GeoDataFrame must be in a projected CRS (meters) for this calculation.")
+    
+    original_gdf_crs = gdf.crs
+    if gdf.crs != acc.crs:
+        gdf = gdf.to_crs(acc.crs) 
     mainstream_gdf = gdf[gdf['mainstream']]
 
     # Identify the first segment (assuming smallest 'id' is the first in sequence)
@@ -386,28 +392,34 @@ def calculate_basin_length(acc: Grid.accumulation, gdf: gpd.GeoDataFrame) -> flo
     accumulation_array = np.asarray(acc)
     
     # Helper function to get raster value at a point
-    def get_value_at_point(array, point, affine):
-        row, col = rasterio.transform.rowcol(affine, point[0], point[1])
+    def get_value_at_point(array, point):
+        col, row = grid.nearest_cell(x=point[0], y=point[1],snap= 'corner')
         return array[row, col]
     
-    accum_start = get_value_at_point(accumulation_array, point_start, acc.affine)
-    accum_end = get_value_at_point(accumulation_array, point_end, acc.affine)
+    accum_start = get_value_at_point(accumulation_array, point_start)
+    accum_end = get_value_at_point(accumulation_array, point_end)
 
     point_upstream = point_start if accum_start < accum_end else point_end
     
-    # Compute the distance to ridge grid
-    grid = Grid.from_raster(acc)
-    acc = grid.from_raster(acc)
-    distance_grid = acc.distance_to_ridge()
-    
-    # Get the distance to ridge for the upstream point
-    ridge_distance = get_value_at_point(distance_grid, point_upstream, grid.affine)
-    
+    # Get the distance in cell numbers to ridge for the upstream point
+    ridge_distance = get_value_at_point(ridge_dist, point_upstream)
+
     # Calculate the total mainstream length by summing lengths of all mainstream segments
+    if original_gdf_crs != acc.crs:
+        mainstream_gdf = mainstream_gdf.to_crs(original_gdf_crs)
     mainstream_length = mainstream_gdf['geometry'].length.sum()
-    
+
+    # Get distance in meters
+    res_meters = degree_res_to_meter_res(
+        (abs(ridge_dist.affine[0]), abs(ridge_dist.affine[4])),
+        point_upstream[0],
+        point_upstream[1],
+        from_crs=grid.crs,
+        target_crs=mainstream_gdf.crs)
+    ridge_distance_meters = ridge_distance * ((res_meters[0]+res_meters[1])/2)
+
     # Compute basin length as the sum of mainstream length and ridge distance
-    basin_length = mainstream_length + ridge_distance
+    basin_length = mainstream_length + ridge_distance_meters
     
     return basin_length
 
@@ -467,21 +479,95 @@ def compute_land_cover_percentages(nlcd_array: np.ndarray, return_names: bool = 
     return percentages
 
 
-def compute_centroidal_flowpath(boundary_gpkg, outlet_point):
-    """
-    Compute centroidal flowpath from outlet to centroid.
+import geopandas as gpd
+import shapely
+from shapely.ops import nearest_points
+import networkx as nx
+from collections import defaultdict
 
-    Parameters:
-    boundary_gpkg (str): Path to boundary GPKG.
-    outlet_point (tuple): Outlet point (x, y).
-
-    Returns:
-    float: Flowpath length (m).
-    """
-    gdf = gpd.read_file(boundary_gpkg)
-    gdf = gdf.to_crs(epsg=3395)
-    centroid = gdf.centroid.unary_union
-    return centroid.distance(gpd.GeoSeries([outlet_point], crs="EPSG:3395")[0])
+def compute_length_to_centroid(river_network, watershed_boundary):
+    # Check CRS compatibility and projection
+    if river_network.crs != watershed_boundary.crs:
+        raise ValueError("River network and watershed boundary must have the same CRS.")
+    if not river_network.crs.is_projected:
+        raise ValueError("River network must be in a projected CRS.")
+    
+    # Step 1: Compute the centroid of the watershed boundary
+    centroid = watershed_boundary.geometry.iloc[0].centroid
+    
+    # Filter the mainstream river segments
+    main_river = river_network[river_network['mainstream']]
+    
+    # Compute the unary union of mainstream river geometries
+    main_river_union = main_river.geometry.unary_union
+    
+    # Step 2: Identify the nearest point on the main river to the centroid (centroidal point)
+    centroidal_point = nearest_points(main_river_union, centroid)[0]
+    
+    # Identify the start segment (segment with highest 'id')
+    start_segment = main_river.loc[main_river['id'].idxmax()]
+    start_id = start_segment['id']
+    
+    # Build a directed graph to represent segment connectivity
+    G = nx.DiGraph()
+    G.add_nodes_from(main_river['id'])
+    
+    # Create dictionaries to map start and end points to segment IDs
+    start_dict = defaultdict(list)
+    end_dict = defaultdict(list)
+    
+    for idx, row in main_river.iterrows():
+        seg_id = row['id']
+        line = row.geometry
+        first_point = shapely.geometry.Point(line.coords[0])
+        last_point = shapely.geometry.Point(line.coords[-1])
+        start_dict[first_point].append(seg_id)
+        end_dict[last_point].append(seg_id)
+    
+    # Add edges where segments connect (last point of one to first point of another)
+    for point, end_segments in end_dict.items():
+        if point in start_dict:
+            start_segments = start_dict[point]
+            for end_seg in end_segments:
+                for start_seg in start_segments:
+                    G.add_edge(end_seg, start_seg)
+    
+    # Find the target segment containing the centroidal point
+    tolerance = 1e-6
+    target_segment = None
+    min_distance = float('inf')
+    for idx, row in main_river.iterrows():
+        distance = row.geometry.distance(centroidal_point)
+        if distance < min_distance:
+            min_distance = distance
+            target_segment = row
+    if min_distance > tolerance:
+        raise ValueError("Centroidal point is not on any mainstream segment.")
+    target_id = target_segment['id']
+    
+    # Step 3: Compute the length from centroidal point to the start
+    # Find the path from start segment to target segment
+    try:
+        path = nx.shortest_path(G, source=start_id, target=target_id)
+    except nx.NetworkXNoPath:
+        raise ValueError("No path exists from start segment to target segment.")
+    
+    # Get the ordered list of segments in the path
+    path_segments = [main_river[main_river['id'] == seg_id].iloc[0] for seg_id in path]
+    
+    # Calculate total length
+    if len(path_segments) == 1:
+        # Single segment case: distance from start to centroidal point
+        line = path_segments[0].geometry
+        total_length = line.project(centroidal_point)
+    else:
+        # Multiple segments: sum full lengths of all but last, plus partial last segment
+        total_length = sum(seg.geometry.length for seg in path_segments[:-1])
+        last_line = path_segments[-1].geometry
+        distance_along = last_line.project(centroidal_point)
+        total_length += distance_along
+    
+    return total_length
 
 def compute_10_85_flowpath(basin_length):
     """
