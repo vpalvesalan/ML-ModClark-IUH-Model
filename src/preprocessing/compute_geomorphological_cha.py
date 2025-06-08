@@ -485,7 +485,7 @@ from shapely.ops import nearest_points
 import networkx as nx
 from collections import defaultdict
 
-def compute_length_to_centroid(river_network, watershed_boundary):
+def compute_centroidal_flowpath(river_network, watershed_boundary):
     # Check CRS compatibility and projection
     if river_network.crs != watershed_boundary.crs:
         raise ValueError("River network and watershed boundary must have the same CRS.")
