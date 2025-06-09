@@ -1,3 +1,4 @@
+from logging import warning
 from warnings import WarningMessage
 import geopandas as gpd
 from matplotlib.pylab import f
@@ -484,18 +485,64 @@ import shapely
 from shapely.ops import nearest_points
 import networkx as nx
 from collections import defaultdict
+import warnings
+import geopandas as gdp
 
-def compute_centroidal_flowpath(river_network, watershed_boundary):
+def compute_centroidal_flowpath_with_networkx(river_network: gdp.GeoDataFrame, watershed_boundary: gdp.GeoDataFrame) -> float:
+    """
+    Computes the length of the centroidal flowpath within a river network using a
+    graph-based approach with NetworkX.
+
+    The centroidal flowpath is defined as the length of the mainstream river
+    from the point nearest to the watershed's centroid, downstream to the
+    segment with the highest 'id' (assumed to be the most downstream point
+    or outlet of the mainstream network).
+
+    This function builds a directed graph of the river network segments based on
+    their connectivity (start/end points) and then uses NetworkX's shortest path
+    algorithm to determine the path and calculate its length.
+
+    Parameters:
+        river_network (gdp.GeoDataFrame): A GeoDataFrame representing the river
+            network. It must contain:
+            - A boolean column named 'mainstream' (True for mainstream segments).
+            - An integer column named 'id' for uniquely identifying segments.
+              Segments are assumed to be ordered from upstream (lower ID) to
+              downstream (higher ID) for pathfinding logic.
+            The CRS must be projected.
+        watershed_boundary (gdp.GeoDataFrame): A GeoDataFrame representing the
+            watershed's boundary. Its CRS will be reprojected to match the
+            river network's CRS if they differ.
+
+    Returns:
+        float: The computed length of the centroidal flowpath in the units
+               of the `river_network`'s Coordinate Reference System (CRS).
+
+    Raises:
+        ValueError: If the `river_network` is not in a projected CRS.
+        ValueError: If the identified centroidal point on the main river is
+                    not sufficiently close to any mainstream segment (based on
+                    an internal tolerance).
+        ValueError: If no valid path exists from the identified most
+                    downstream segment ('id' with `idxmax()`) to the target
+                    segment containing the centroidal point within the constructed
+                    network graph. This can occur if the network is disconnected
+                    or the assumed 'start' and 'target' are not properly linked.
+
+    Warns:
+        UserWarning: If the `watershed_boundary` CRS is different from the
+                     `river_network` CRS, indicating it has been reprojected.
+    """
+    
     # Check CRS compatibility and projection
-    if river_network.crs != watershed_boundary.crs:
-        raise ValueError("River network and watershed boundary must have the same CRS.")
     if not river_network.crs.is_projected:
         raise ValueError("River network must be in a projected CRS.")
+    if river_network.crs != watershed_boundary.crs:
+        watershed_boundary = watershed_boundary.to_crs(river_network.crs)
+        warnings.warn("Watershed boundary CRS was different from river network CRS. It has been reprojected to match.")
     
-    # Step 1: Compute the centroid of the watershed boundary
     centroid = watershed_boundary.geometry.iloc[0].centroid
-    
-    # Filter the mainstream river segments
+
     main_river = river_network[river_network['mainstream']]
     
     # Compute the unary union of mainstream river geometries
@@ -566,6 +613,105 @@ def compute_centroidal_flowpath(river_network, watershed_boundary):
         last_line = path_segments[-1].geometry
         distance_along = last_line.project(centroidal_point)
         total_length += distance_along
+    
+    return total_length
+
+
+import geopandas as gdp
+from shapely.ops import nearest_points
+import warnings
+
+def compute_centroidal_flowpath(river_network: gdp.GeoDataFrame, watershed_boundary: gdp.GeoDataFrame) -> float:
+    """
+    Computes the length of the centroidal flowpath within a river network.
+
+    The centroidal flowpath is defined as the length of the mainstream river
+    from the point nearest to the watershed's centroid, downstream to the
+    outlet (segment with the highest 'id').
+
+    Parameters:
+        river_network (gdp.GeoDataFrame): A GeoDataFrame representing the river
+            network. It must contain a boolean column named 'mainstream'
+            (True for mainstream segments) and an integer column named 'id'
+            for ordering segments from upstream (lower ID) to downstream (higher ID).
+            The CRS must be projected.
+        watershed_boundary (gdp.GeoDataFrame): A GeoDataFrame representing the
+            watershed's boundary. Its CRS will be reprojected to match the
+            river network's CRS if they differ.
+
+    Returns:
+        float: The computed length of the centroidal flowpath in the units
+               of the `river_network`'s Coordinate Reference System (CRS).
+
+    Raises:
+        ValueError: If the `river_network` is not in a projected CRS.
+        ValueError: If no valid path exists from the identified centroidal
+                    point on the mainstream to the headwaters segment,
+                    which typically means the centroidal point is downstream
+                    of the headwaters.
+
+    Warns:
+        UserWarning: If the `watershed_boundary` CRS is different from the
+                     `river_network` CRS, indicating it has been reprojected.
+    """
+    # Check CRS compatibility and projection
+    if not river_network.crs.is_projected:
+        raise ValueError("River network must be in a projected CRS.")
+    if river_network.crs != watershed_boundary.crs:
+        watershed_boundary = watershed_boundary.to_crs(river_network.crs)
+        warnings.warn("Watershed boundary CRS was different from river network CRS. It has been reprojected to match.")
+    
+    # Step 1: Compute the centroid of the watershed boundary
+    centroid = watershed_boundary.geometry.iloc[0].centroid
+    
+    # Filter the mainstream river segments
+    main_river = river_network[river_network['mainstream']].sort_values('id')
+    
+    # Compute the unary union of mainstream river geometries
+    main_river_union = main_river.geometry.unary_union
+    
+    # Step 2: Identify the nearest point on the main river to the centroid (centroidal point)
+    centroidal_point = nearest_points(main_river_union, centroid)[0]
+    
+    # Find the target segment containing the centroidal point
+    target_segment = None
+    min_distance = float('inf')
+    tolerance = 1e-6  # Tolerance for distance check
+    for _, row in main_river.iterrows():
+        distance = row.geometry.distance(centroidal_point)
+        if distance < min_distance:
+            min_distance = distance
+            target_segment = row
+    if min_distance > tolerance:
+        raise ValueError("Centroidal point is not on any mainstream segment.")
+    target_id = target_segment['id']
+    
+    # Step 3: Compute the length from centroidal point to the start
+    total_length = 0.0
+    reached_target = False
+    
+    # Iterate through segments in order (highest to lowest ID, downstream to upstream)
+    main_river = main_river.sort_values('id',ascending=False)  # Ensure segments are ordered by ID
+    for _, row in main_river.iterrows():
+        seg_id = row['id']
+        line = row.geometry
+        
+        # Stop if we've passed the target segment
+        if reached_target:
+            break
+            
+        # If this is the target segment, compute partial length and stop
+        if seg_id == target_id:
+            distance_along = line.project(centroidal_point)
+            total_length += distance_along
+            reached_target = True
+        # Otherwise, add the full length of the segment
+        else:
+            total_length += line.length
+    
+    # If no path to target, raise error (e.g., target is downstream of start)
+    if not reached_target:
+        raise ValueError("No valid path exists from start segment to target segment.")
     
     return total_length
 
