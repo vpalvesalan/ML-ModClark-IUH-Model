@@ -715,17 +715,75 @@ def compute_centroidal_flowpath(river_network: gdp.GeoDataFrame, watershed_bound
     
     return total_length
 
-def compute_10_85_flowpath(basin_length):
+import geopandas as gpd
+import shapely.ops as ops
+from shapely.geometry import LineString
+
+def compute_10_85_flowpath(mainstream):
     """
-    Compute the 10-85% flowpath length.
+    Extracts the 10% to 85% segment of a river's mainstream based on cumulative length.
+
+    This function takes a GeoPandas DataFrame containing LineString geometries representing 
+    the segments of a river's mainstream, ordered from upstream to downstream by the 'ID' column. 
+    It merges these LineStrings into a single continuous LineString and extracts the central 
+    portion of the river corresponding to 10% to 85% of the total river length (measured 
+    from upstream to downstream).
 
     Parameters:
-    basin_length (float): Basin length (m).
+    ----------
+    mainstream : geopandas.GeoDataFrame
+        A GeoDataFrame with LineString geometries and an 'ID' column indicating 
+        the order of river segments from upstream (lower IDs) to downstream (higher IDs).
+        The CRS must be projected to ensure accurate length calculations.
 
     Returns:
-    float: Flowpath length from 10% to 85% of basin length.
+    -------
+    list
+        A list containing:
+        - float: the length of the extracted segment.
+        - geopandas.GeoDataFrame: a new GeoDataFrame containing the extracted LineString 
+          segment between 10% and 85% of the river's total length.
+
+    Raises:
+    ------
+    ValueError
+        If the input CRS is not projected.
+        If the LineStrings cannot be merged into a single LineString.
     """
-    return (0.85 - 0.10) * basin_length
+    
+    # Check if CRS is projected
+    if not mainstream.crs.is_projected:
+        raise ValueError("The CRS must be projected for accurate length calculations.")
+    
+    # Sort by 'ID' to ensure upstream-to-downstream order
+    mainstream = mainstream.sort_values(by='ID')
+    
+    # Merge all LineStrings into a single LineString
+    lines = mainstream.geometry.tolist()
+    merged_line = ops.linemerge(lines)
+    
+    # Verify the merged result is a single LineString
+    if not isinstance(merged_line, LineString):
+        raise ValueError("The geometries could not be merged into a single LineString.")
+    
+    # Calculate total length
+    total_length = merged_line.length
+    
+    # Calculate distances from the outlet (end) upstream
+    # 10% from outlet = 90% from start, 85% from outlet = 15% from start
+    start_dist = total_length * 0.15  # 85% from outlet
+    end_dist = total_length * 0.9     # 10% from outlet
+    
+    # Extract the segment between these distances
+    segment = ops.substring(merged_line, start_dist, end_dist)
+    
+    # Create a new GeoDataFrame with the segment
+    new_gdf = gpd.GeoDataFrame(geometry=[segment], crs=mainstream.crs)
+    
+    # Compute the segment length
+    segment_length = segment.length
+    
+    return [segment_length, new_gdf]
 
 def compute_main_channel_slope(elev_outlet, elev_source, stream_length):
     """
