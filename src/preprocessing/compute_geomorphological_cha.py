@@ -360,7 +360,7 @@ def compute_drainage_density(stream_length, area):
 import rasterio
 import geopandas as gpd
 
-def compute_basin_length(acc: Raster, ridge_dist: Raster, grid: Grid, gdf: gpd.GeoDataFrame) -> float:
+def compute_basin_length(acc: Raster, ridge_dist: Raster, gdf: gpd.GeoDataFrame) -> float:
     """
     Calculate the basin length using a pysheds accumulation raster and a GeoPandas linestring object.
     
@@ -393,6 +393,8 @@ def compute_basin_length(acc: Raster, ridge_dist: Raster, grid: Grid, gdf: gpd.G
     accumulation_array = np.asarray(acc)
     
     # Helper function to get raster value at a point
+    grid = Grid()
+    grid.viewfinder  = acc.viewfinder
     def get_value_at_point(array, point):
         col, row = grid.nearest_cell(x=point[0], y=point[1],snap= 'corner')
         return array[row, col]
