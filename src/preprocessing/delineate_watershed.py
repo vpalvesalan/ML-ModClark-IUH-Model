@@ -10,12 +10,113 @@ from scipy.ndimage import generic_filter
 
 from preprocessing.get_utm_epsg import get_nad83_utm_epsg
 
+import rasterio
+import numpy as np
+from pyproj import Transformer
+from scipy.ndimage import generic_filter
+from pysheds.view import Raster, ViewFinder
+import warnings
+
 
 def get_raster_from_vrt(
+    coord: tuple[float, float] = None,
+    bbox: list[float] = None,
+    vrt_path: str = "",
+    up_stream_buffer_km: float = 15,
+    down_stream_buffer_km: float = 15,
+    coord_datum: str = "epsg:4269",
+    fill_nodata: bool = True
+) -> Raster:
+    """
+    Extracts a DEM subset from a VRT file using either a coordinate with buffer distances
+    or a bounding box, and optionally fills NoData gaps.
+
+    Parameters:
+        coord (tuple[float, float], optional): Coordinate (lon, lat) in the specified `coord_datum` CRS.
+        bbox (list[float], optional): Bounding box [minx, miny, maxx, maxy] in the specified `coord_datum` CRS.
+        vrt_path (str): Path to the .vrt DEM file.
+        up_stream_buffer_km (float): Buffer for top, left, and right (used if `coord` is provided).
+        down_stream_buffer_km (float): Buffer for bottom (used if `coord` is provided).
+        coord_datum (str): EPSG code of the input coordinate system.
+        fill_nodata (bool): If True, fills NoData values using neighborhood averaging.
+
+    Returns:
+        Raster: PySheds Raster.
+    """
+    if coord is None and bbox is None:
+        raise ValueError("Either 'coord' or 'bbox' must be provided.")
+
+    with rasterio.open(vrt_path) as src:
+        dem_crs = src.crs
+
+        if bbox:
+            if coord is not None:
+                warnings.warn("Both 'coord' and 'bbox' provided. Using 'bbox' for extraction.")
+            # Transform coordinates from coord_datum to DEM's CRS
+            if coord_datum.lower() != str(dem_crs).lower():
+                transformer = Transformer.from_crs(coord_datum, dem_crs, always_xy=True)
+                minx, miny = transformer.transform(bbox[0], bbox[1])
+                maxx, maxy = transformer.transform(bbox[2], bbox[3])
+            else:
+                minx, miny, maxx, maxy = bbox
+            bounds = [minx, miny, maxx, maxy]
+
+        elif coord:
+            if up_stream_buffer_km is None or down_stream_buffer_km is None:
+                raise ValueError("Both 'up_stream_buffer_km' and 'down_stream_buffer_km' must be provided when using 'coord'.")
+            if coord_datum.lower() != str(dem_crs).lower():
+                transformer = Transformer.from_crs(coord_datum, dem_crs, always_xy=True)
+                x, y = transformer.transform(*coord)
+            else:
+                x, y = coord
+
+            # Determine buffers (asymmetric)
+            if dem_crs.is_projected:
+                buffer_left = buffer_right = buffer_top = up_stream_buffer_km * 1000
+                buffer_bottom = down_stream_buffer_km * 1000
+            else:
+                km_to_deg = 1 / 111   # ~0.009 degrees per km
+                buffer_left = buffer_right = buffer_top = up_stream_buffer_km * km_to_deg
+                buffer_bottom = down_stream_buffer_km * km_to_deg
+
+            bounds = [x - buffer_left, y - buffer_bottom, x + buffer_right, y + buffer_top]
+
+        window = src.window(*bounds)
+        array = src.read(1, window=window)
+        transform = src.window_transform(window)
+        shape = array.shape
+        crs = src.crs
+        nodata = src.nodata
+
+        if fill_nodata and nodata is not None:
+            mask = array == nodata
+            array = array.astype('float32')
+            array[mask] = np.nan
+
+            def mean_filter(values):
+                center = values[len(values) // 2]
+                if np.isnan(center):
+                    return np.nanmean(values)
+                return center
+
+            filled = generic_filter(array, mean_filter, size=3, mode='nearest')
+            array = np.where(np.isnan(array), filled, array)
+            array = np.where(np.isnan(array), nodata, array)
+
+        view_finder = ViewFinder(
+            affine=transform,
+            shape=shape,
+            crs=crs,
+            nodata=nodata
+        )
+
+        return Raster(array, viewfinder=view_finder)
+
+def get_raster_from_vrt_____(
     coord: tuple[float, float],
     vrt_path: str,
-    up_stream_buffer_km: float = 30,
-    down_stream_buffer_km: float = 1,
+    up_stream_buffer_km: float = 15,
+    down_stream_buffer_km: float = 15,
     coord_datum: str = "epsg:4269",  # NAD83
     fill_nodata: bool = True
 ) -> Raster:
