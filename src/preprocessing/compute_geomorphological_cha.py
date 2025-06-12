@@ -1,4 +1,6 @@
-from logging import warning
+from heapq import merge
+from logging import warn, warning
+from tracemalloc import start
 from warnings import WarningMessage
 import geopandas as gpd
 from matplotlib.pylab import f
@@ -322,7 +324,7 @@ def compute_stream_length(stream_gdf: gpd.GeoDataFrame, mainstream_col: str = 'm
 
     Parameters:
         stream_gdf (gpd.GeoDataFrame): GeoDataFrame of stream lines.
-        mainstream_col (str): Column name of boolean feature indicating mainstream channels (default is 'mainstream').
+        mainstream_col (str): Optional. Column name of boolean feature indicating mainstream channels (default is 'mainstream').
 
     Returns:
         Tuple[float, float]: Mainstream length and total length of stream channels in meters.
@@ -330,8 +332,9 @@ def compute_stream_length(stream_gdf: gpd.GeoDataFrame, mainstream_col: str = 'm
     if not stream_gdf.crs or not stream_gdf.crs.is_projected:
         raise ValueError("Stream lines must be in a projected CRS to compute length in meters.")
     
-    if mainstream_col not in stream_gdf.columns:
+    if mainstream_col not in stream_gdf.columns  or mainstream_col is None:
         warnings.warn(f"Column '{mainstream_col}' not found in stream GeoDataFrame. Assuming all streams are mainstream.")
+        mainstream_col = 'mainstream'
         stream_gdf[mainstream_col] = True
 
     if not pd.api.types.is_bool_dtype(stream_gdf[mainstream_col]):
@@ -426,61 +429,6 @@ def compute_basin_length(acc: Raster, ridge_dist: Raster, gdf: gpd.GeoDataFrame)
     
     return basin_length
 
-def compute_land_cover_percentages(nlcd_array: np.ndarray, return_names: bool = False) -> dict:
-
-    """
-    Calculate the percentage of each land cover type within the preprocessed NLCD array.
-
-    Parameters:
-    -----------
-    nlcd_array : np.ndarray
-        Preprocessed NLCD array clipped to watershed.
-    return_names : bool, default=False
-        If True, return class names as keys; otherwise, return class codes.
-
-    Returns:
-    --------
-    dict
-        Dictionary where keys are either NLCD land cover class codes or names, and values are percentages.
-    """
-
-    # NLCD class mapping
-    NLCD_CLASSES = {
-        250: 'Unknown',
-        11: 'Open Water',
-        12: 'Perennial Ice/Snow',
-        21: 'Developed, Open Space',
-        22: 'Developed, Low Intensity',
-        23: 'Developed, Medium Intensity',
-        24: 'Developed, High Intensity',
-        31: 'Barren Land (Rock/Sand/Clay)',
-        41: 'Deciduous Forest',
-        42: 'Evergreen Forest',
-        43: 'Mixed Forest',
-        52: 'Shrub/Scrub',
-        71: 'Grassland/Herbaceous',
-        81: 'Pasture/Hay',
-        82: 'Cultivated Crops',
-        90: 'Woody Wetlands',
-        95: 'Emergent Herbaceous Wetlands'
-    }
-
-    # Maks out out of clipped watershed boundary geometry
-    valid_mask = nlcd_array != 0
-    valid_data = nlcd_array[valid_mask]
-
-    total_pixels = valid_data.size
-
-    unique, counts = np.unique(valid_data, return_counts=True)
-
-    percentages = {}
-
-    for class_code, count in zip(unique, counts):
-        key = NLCD_CLASSES.get(class_code, f'Unknown') if return_names else f'lc_code_{int(class_code)}'
-        percentages[key] = (count / total_pixels) * 100
-
-    return percentages
-
 
 import geopandas as gpd
 import shapely
@@ -535,7 +483,7 @@ def compute_centroidal_flowpath_with_networkx(river_network: gdp.GeoDataFrame, w
         UserWarning: If the `watershed_boundary` CRS is different from the
                      `river_network` CRS, indicating it has been reprojected.
     """
-    
+    return "Use `compute_centroidal_flowpath` instead of `compute_centroidal_flowpath_with_networkx` as it is more efficient and simpler."
     # Check CRS compatibility and projection
     if not river_network.crs.is_projected:
         raise ValueError("River network must be in a projected CRS.")
@@ -623,7 +571,7 @@ import geopandas as gdp
 from shapely.ops import nearest_points
 import warnings
 
-def compute_centroidal_flowpath(river_network: gdp.GeoDataFrame, watershed_boundary: gdp.GeoDataFrame) -> float:
+def compute_centroidal_flowpath(mainstream: gdp.GeoDataFrame, watershed_boundary: gdp.GeoDataFrame) -> float:
     """
     Computes the length of the centroidal flowpath within a river network.
 
@@ -632,9 +580,8 @@ def compute_centroidal_flowpath(river_network: gdp.GeoDataFrame, watershed_bound
     outlet (segment with the highest 'id').
 
     Parameters:
-        river_network (gdp.GeoDataFrame): A GeoDataFrame representing the river
-            network. It must contain a boolean column named 'mainstream'
-            (True for mainstream segments) and an integer column named 'id'
+        mainstream (gdp.GeoDataFrame): A GeoDataFrame representing the main river
+            stream line. It must contain an integer column named 'id'
             for ordering segments from upstream (lower ID) to downstream (higher ID).
             The CRS must be projected.
         watershed_boundary (gdp.GeoDataFrame): A GeoDataFrame representing the
@@ -657,17 +604,17 @@ def compute_centroidal_flowpath(river_network: gdp.GeoDataFrame, watershed_bound
                      `river_network` CRS, indicating it has been reprojected.
     """
     # Check CRS compatibility and projection
-    if not river_network.crs.is_projected:
+    if not mainstream.crs.is_projected:
         raise ValueError("River network must be in a projected CRS.")
-    if river_network.crs != watershed_boundary.crs:
-        watershed_boundary = watershed_boundary.to_crs(river_network.crs)
+    if mainstream.crs != watershed_boundary.crs:
+        watershed_boundary = watershed_boundary.to_crs(mainstream.crs)
         warnings.warn("Watershed boundary CRS was different from river network CRS. It has been reprojected to match.")
     
     # Step 1: Compute the centroid of the watershed boundary
     centroid = watershed_boundary.geometry.iloc[0].centroid
     
     # Filter the mainstream river segments
-    main_river = river_network[river_network['mainstream']].sort_values('id')
+    main_river = mainstream.sort_values('id')
     
     # Compute the unary union of mainstream river geometries
     main_river_union = main_river.geometry.unary_union
@@ -732,33 +679,26 @@ def compute_10_85_flowpath(mainstream):
     from upstream to downstream).
 
     Parameters:
-    ----------
-    mainstream : geopandas.GeoDataFrame
-        A GeoDataFrame with LineString geometries and an 'ID' column indicating 
-        the order of river segments from upstream (lower IDs) to downstream (higher IDs).
-        The CRS must be projected to ensure accurate length calculations.
+        mainstream (geopandas.GeoDataFrame):
+            A GeoDataFrame with LineString geometries and an 'id' column indicating 
+            the order of river segments from upstream (lower IDs) to downstream (higher IDs).
+            The CRS must be projected to ensure accurate length calculations.
 
     Returns:
-    -------
-    list
-        A list containing:
-        - float: the length of the extracted segment.
-        - geopandas.GeoDataFrame: a new GeoDataFrame containing the extracted LineString 
-          segment between 10% and 85% of the river's total length.
+        list [float, geopandas.GeoDataFrame]: The length of the extracted segment and,
+            a new GeoDataFrame containing the extracted LineString 
+            segment between 10% and 85% of the river's total length.
 
     Raises:
-    ------
-    ValueError
-        If the input CRS is not projected.
-        If the LineStrings cannot be merged into a single LineString.
+        ValueError: If the input CRS is not projected.
+        ValueError: If the LineStrings cannot be merged into a single LineString.
     """
     
-    # Check if CRS is projected
     if not mainstream.crs.is_projected:
         raise ValueError("The CRS must be projected for accurate length calculations.")
     
     # Sort by 'ID' to ensure upstream-to-downstream order
-    mainstream = mainstream.sort_values(by='ID')
+    mainstream = mainstream.sort_values(by='id')
     
     # Merge all LineStrings into a single LineString
     lines = mainstream.geometry.tolist()
@@ -787,19 +727,59 @@ def compute_10_85_flowpath(mainstream):
     
     return [segment_length, new_gdf]
 
-def compute_main_channel_slope(elev_outlet, elev_source, stream_length):
+def compute_channel_slope(channel:  gpd.GeoDataFrame, dem : Raster) -> float:
     """
-    Compute slope of main stream channel.
+    Compute the  slope of a channel.
 
     Parameters:
-    elev_outlet (float): Elevation at outlet (m).
-    elev_source (float): Elevation at stream source (m).
-    stream_length (float): Main channel length (m).
+        channel (gpd.GeoDataFrame): GeoDataFrame representing a channel.
+        dem (Raster): pysheds Raster object of the DEM.
 
     Returns:
-    float: Main channel slope.
+        float: Main channel slope.
     """
-    return (elev_source - elev_outlet) / stream_length
+    if channel.empty:
+        raise ValueError("Channel GeoDataFrame is empty.")
+    if not channel.crs.is_projected:
+        raise ValueError("Channel GeoDataFrame must be in a projected CRS (meters).")
+    
+    stream_length = channel.length.sum()
+    if stream_length == 0:
+        raise ValueError("Stream length is zero. Ensure the channel geometry is valid and has length.")
+
+    if channel.to_crs != dem.crs:
+        channel = channel.to_crs(dem.crs)
+    
+    if 'id' not in channel.columns:
+        warnings.warn("Channel GeoDataFrame does not have an 'id' column. Assuming segments are ordered by geometry.")
+    else:
+        channel = channel.sort_values(by='id')
+
+    line = channel.geometry.tolist()
+    merged_line = ops.linemerge(line)
+
+    end_point = merged_line.coords[-1]
+    start_point = merged_line.coords[0]
+
+    grid = Grid()
+    grid.viewfinder = dem.viewfinder
+
+    def get_value_at_point(array, point):
+        col, row = grid.nearest_cell(x=point[0], y=point[1],snap= 'corner')
+        return array[row, col]
+    start_elev = get_value_at_point(dem, start_point)
+    end_elev = get_value_at_point(dem, end_point)
+
+    if np.isnan(start_elev) or np.isnan(end_elev):
+        raise ValueError("Elevation values at start or end point are NaN. Ensure DEM is valid and has no missing data.")
+    
+    slope = abs(start_elev - end_elev) / stream_length
+    return slope
+    
+    # Compute slope as (elevation difference) / (length of channel)
+
+
+
 
 def compute_10_85_slope(elev_10, elev_85, L_10_85):
     """
@@ -949,4 +929,59 @@ def extract_land_cover(landcover_raster, boundary_gpkg):
     geometries = [shape(geom) for geom in gdf.geometry]
     masked = get_masked_array(landcover_raster, geometries)
     return masked[masked != 0]
+
+def compute_land_cover_percentages(nlcd_array: np.ndarray, return_names: bool = False) -> dict:
+
+    """
+    Calculate the percentage of each land cover type within the preprocessed NLCD array.
+
+    Parameters:
+    -----------
+    nlcd_array : np.ndarray
+        Preprocessed NLCD array clipped to watershed.
+    return_names : bool, default=False
+        If True, return class names as keys; otherwise, return class codes.
+
+    Returns:
+    --------
+    dict
+        Dictionary where keys are either NLCD land cover class codes or names, and values are percentages.
+    """
+
+    # NLCD class mapping
+    NLCD_CLASSES = {
+        250: 'Unknown',
+        11: 'Open Water',
+        12: 'Perennial Ice/Snow',
+        21: 'Developed, Open Space',
+        22: 'Developed, Low Intensity',
+        23: 'Developed, Medium Intensity',
+        24: 'Developed, High Intensity',
+        31: 'Barren Land (Rock/Sand/Clay)',
+        41: 'Deciduous Forest',
+        42: 'Evergreen Forest',
+        43: 'Mixed Forest',
+        52: 'Shrub/Scrub',
+        71: 'Grassland/Herbaceous',
+        81: 'Pasture/Hay',
+        82: 'Cultivated Crops',
+        90: 'Woody Wetlands',
+        95: 'Emergent Herbaceous Wetlands'
+    }
+
+    # Maks out out of clipped watershed boundary geometry
+    valid_mask = nlcd_array != 0
+    valid_data = nlcd_array[valid_mask]
+
+    total_pixels = valid_data.size
+
+    unique, counts = np.unique(valid_data, return_counts=True)
+
+    percentages = {}
+
+    for class_code, count in zip(unique, counts):
+        key = NLCD_CLASSES.get(class_code, f'Unknown') if return_names else f'lc_code_{int(class_code)}'
+        percentages[key] = (count / total_pixels) * 100
+
+    return percentages
 
