@@ -773,43 +773,107 @@ def compute_channel_slope(channel:  gpd.GeoDataFrame, dem : Raster) -> float:
     if np.isnan(start_elev) or np.isnan(end_elev):
         raise ValueError("Elevation values at start or end point are NaN. Ensure DEM is valid and has no missing data.")
     
+    # Compute slope as (elevation difference) / (length of channel)
     slope = abs(start_elev - end_elev) / stream_length
     return slope
     
-    # Compute slope as (elevation difference) / (length of channel)
 
 
+import numpy as np
+import pyproj
+from rasterio.warp import reproject, Resampling, calculate_default_transform
+from pysheds.grid import Grid
 
-
-def compute_10_85_slope(elev_10, elev_85, L_10_85):
+def compute_average_slope(dem, target_crs='EPSG:3857', catchment_mask=None):
     """
-    Compute 10-85 slope.
-
-    Parameters:
-    elev_10 (float): Elevation at 10% length.
-    elev_85 (float): Elevation at 85% length.
-    L_10_85 (float): Length of 10-85 flowpath (m).
-
+    Compute the average slope from a DEM Raster, optionally within a catchment mask.
+    
+    The DEM is reprojected to the specified projected CRS (e.g., EPSG:3857) to ensure 
+    slope calculations are performed in linear units (meters per meter).
+    
+    Args:
+        dem (Raster): A pysheds Raster object representing the elevation data.
+        target_crs (str or pyproj.CRS): The target coordinate reference system to project 
+            the DEM into. Must be a projected CRS (units in meters).
+        catchment_mask (Raster, optional): An optional Raster object representing a mask 
+            (1 = inside catchment, 0 or np.nan = outside). Will be reprojected if provided.
+    
     Returns:
-    float: 10-85 slope.
+        float: Average slope in meters per meter (m/m), ignoring NaN and masked values.
+    
+    Raises:
+        ValueError: If target_crs is not a projected CRS (i.e., has angular units like degrees).
+        TypeError: If inputs are not valid pysheds Raster objects.
     """
-    return (elev_10 - elev_85) / L_10_85
+    
+    # --- Input validation ---
+    if not isinstance(dem, Raster):
+        raise TypeError("Input 'dem' must be a pysheds Raster object.")
+    if catchment_mask is not None and not isinstance(catchment_mask, Raster):
+        raise TypeError("Input 'catchment_mask' must be a pysheds Raster object or None.")
+    
+    # Parse and validate CRS
+    try:
+        crs_obj = pyproj.CRS.from_user_input(target_crs)
+    except pyproj.exceptions.CRSError:
+        raise ValueError(f"'{target_crs}' is not a valid CRS identifier.")
+    
+    if not crs_obj.is_projected:
+        raise ValueError(f"Target CRS '{target_crs}' is not a projected CRS. Please use a CRS with linear units like meters (e.g., EPSG:3857).")
 
-def compute_basin_slope(dem_array):
-    """
-    Compute average basin slope.
+    # --- Reproject DEM ---
+    dem_epsg_str = f"EPSG:{dem.crs.to_epsg()}"
+    crs_obj_epsg_str = str(crs_obj)
+    if dem_epsg_str != crs_obj_epsg_str:
+        dem_proj = dem.to_crs(crs_obj)
+    
+    # Create a new grid for the reprojected DEM
+    grid = Grid()
+    grid.viewfinder = dem_proj.viewfinder
+    
+    # Compute flow direction and slope
+    fdir = grid.flowdir(dem_proj)
+    slope = grid.cell_slopes(dem_proj, fdir)  # slope is a Raster
+    print(f"Average slope {np.nanmean(slope):.4f} before masking.")
+    # Convert slope to NumPy array
+    slope_arr = slope.view()
 
-    Parameters:
-    dem_array (np.ndarray): Elevation array.
+    # --- Apply catchment mask if provided ---
+    if catchment_mask is not None:
+        
+        # The slope raster's CRS is dem_proj.crs
+        if catchment_mask.crs != dem_proj.crs:
+            mask_proj = catchment_mask.to_crs(dem_proj.crs)
+        else:
+            mask_proj = catchment_mask
 
-    Returns:
-    float: Average slope in radians.
-    """
-    from scipy.ndimage import sobel
-    dx = sobel(dem_array, axis=0)
-    dy = sobel(dem_array, axis=1)
-    slope = np.sqrt(dx**2 + dy**2)
-    return np.nanmean(slope)
+        mask_array = np.asarray(mask_proj.view())
+
+        # If the reprojected mask's shape still doesn't match the slope array's shape,
+        # perform a final grid alignment using rasterio.reproject.
+        if slope_arr.shape != mask_array.shape:
+            # Create an empty array for the aligned mask
+            aligned_mask = np.empty(slope_arr.shape, dtype=mask_array.dtype)
+            # Reproject the mask to match the slope's grid, transform, and CRS
+            reproject(
+                source=mask_array,
+                destination=aligned_mask,
+                src_transform=mask_proj.affine,
+                src_crs=mask_proj.crs,
+                dst_transform=slope.affine,
+                dst_crs=slope.crs,           
+                resampling=Resampling.nearest
+            )
+            mask_array = aligned_mask
+
+        # Mask the slope array using the reprojected catchment mask
+        slope_arr = np.where(mask_array > 0, slope_arr, np.nan)
+        
+    # --- Compute average slope ---
+    avg_slope = np.nanmean(slope_arr)
+
+    return avg_slope
+
 
 def compute_basin_relief(dem_array):
     """
