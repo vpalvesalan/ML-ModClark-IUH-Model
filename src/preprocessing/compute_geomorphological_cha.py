@@ -833,10 +833,9 @@ def compute_average_slope(dem, target_crs='EPSG:3857', catchment_mask=None):
     
     # Compute flow direction and slope
     fdir = grid.flowdir(dem_proj)
-    slope = grid.cell_slopes(dem_proj, fdir)  # slope is a Raster
-    print(f"Average slope {np.nanmean(slope):.4f} before masking.")
-    # Convert slope to NumPy array
-    slope_arr = slope.view()
+    slope = grid.cell_slopes(dem_proj, fdir) 
+
+    slope_arr = np.asarray(slope.view())
 
     # --- Apply catchment mask if provided ---
     if catchment_mask is not None:
@@ -875,41 +874,75 @@ def compute_average_slope(dem, target_crs='EPSG:3857', catchment_mask=None):
     return avg_slope
 
 
-def compute_basin_relief(dem_array):
+def compute_basin_relief(dem: Raster, mask=None):
     """
-    Compute basin relief.
+    Compute the basin relief from a DEM Raster, optionally within a catchment mask.
 
-    Parameters:
-    dem_array (np.ndarray): Elevation array.
-
+    Args:
+        dem (Raster): A pysheds Raster object representing the elevation data.
+        mask (Raster, optional): An optional pysheds Raster object representing a mask
+    
     Returns:
-    float: Basin relief (m).
+        float: Basin relief in meters, calculated as the difference between the maximum and minimum elevation values.
     """
+
+    dem_array = np.asarray(dem.view())
+    # --- Apply catchment mask if provided ---
+    if mask is not None:
+
+        mask_array = np.asarray(mask.view())
+        if dem_array.shape != mask_array.shape:
+
+            # Create an empty array for the aligned mask
+            aligned_mask = np.empty(dem_array.shape, dtype=mask_array.dtype)
+
+            # Reproject the mask to match the slope's grid, transform, and CRS
+            reproject(
+                source=mask_array,
+                destination=aligned_mask,
+                src_transform=mask.affine,
+                src_crs=mask.crs,
+                dst_transform=dem.affine,
+                dst_crs=dem.crs,           
+                resampling=Resampling.nearest
+            )
+            mask_array = aligned_mask
+
+        # Mask the slope array using the reprojected catchment mask
+        dem_array = np.where(mask_array > 0, dem_array, np.nan)
+
     return np.nanmax(dem_array) - np.nanmin(dem_array)
 
-def compute_compactness_coefficient(perimeter, area):
+def compute_compactness_coefficient(watershed_boundary: gpd.GeoDataFrame) -> float:
     """
     Compute compactness coefficient.
 
-    Parameters:
-    perimeter (float): Perimeter of watershed (m).
-    area (float): Area of watershed (m²).
+    Args:
+        watershed_boundary (gpd.GeoDataFrame): GeoDataFrame representing the watershed boundary.
 
     Returns:
-    float: Compactness coefficient.
+        float: Compactness coefficient as the ratio of the watershed perimeter
+        to the circumference of a circle with the same area.
+    
+    Raises:
+        ValueError: If the watershed boundary is not in a projected CRS.
     """
+    if not watershed_boundary.crs.is_projected:
+        raise ValueError("Watershed boundary must be in a projected CRS to compute area and perimeter in meters.")
+    area = watershed_boundary.area.sum()
+    perimeter = watershed_boundary.length.sum()
     return perimeter / (2 * math.sqrt(math.pi * area))
 
 def compute_form_factor(area, basin_length):
     """
     Compute form factor.
 
-    Parameters:
-    area (float): Watershed area (m²).
-    basin_length (float): Basin length (m).
+    Args:
+        area (float): Watershed area (m²).
+        basin_length (float): Basin length (m).
 
     Returns:
-    float: Form factor.
+        float: Form factor.
     """
     return area / (basin_length ** 2)
 
@@ -917,12 +950,12 @@ def compute_elongation_ratio(area, basin_length):
     """
     Compute elongation ratio.
 
-    Parameters:
-    area (float): Watershed area (m²).
-    basin_length (float): Basin length (m).
+    Args:
+        area (float): Watershed area (m²).
+        basin_length (float): Basin length (m).
 
     Returns:
-    float: Elongation ratio.
+        float: Elongation ratio.
     """
     diameter = 2 * math.sqrt(area / math.pi)
     return diameter / basin_length
@@ -931,12 +964,12 @@ def compute_relief_ratio(basin_relief, basin_length):
     """
     Compute relief ratio.
 
-    Parameters:
-    basin_relief (float): Basin relief (m).
-    basin_length (float): Basin length (m).
+    Args:
+        basin_relief (float): Basin relief (m).
+        basin_length (float): Basin length (m).
 
     Returns:
-    float: Relief ratio.
+        float: Relief ratio.
     """
     return basin_relief / basin_length
 
@@ -944,12 +977,12 @@ def compute_ruggedness_number(basin_relief, drainage_density):
     """
     Compute ruggedness number.
 
-    Parameters:
-    basin_relief (float): Basin relief (m).
-    drainage_density (float): Drainage density (m⁻¹).
+    Args:
+        basin_relief (float): Basin relief (m).
+        drainage_density (float): Drainage density (m⁻¹).
 
     Returns:
-    float: Ruggedness number.
+        float: Ruggedness number.
     """
     return basin_relief * drainage_density
 
@@ -957,25 +990,49 @@ def compute_overland_flow_length(drainage_density):
     """
     Compute overland flow length.
 
-    Parameters:
-    drainage_density (float): Drainage density (m⁻¹).
+    Args:
+        drainage_density (float): Drainage density (m⁻¹).
 
     Returns:
-    float: Overland flow length (m).
+        float: Overland flow length (m).
     """
     return 1 / (2 * drainage_density)
 
-def compute_channel_sinuosity(main_channel_length, straight_distance):
+def compute_channel_sinuosity(mainstream: gpd.GeoDataFrame) -> float:
     """
     Compute channel sinuosity.
 
-    Parameters:
-    main_channel_length (float): Main channel length (m).
-    straight_distance (float): Straight-line distance (m).
+    Args:
+        mainsstream (gpd.GeoDataFrame): GeoDataFrame representing the mainstream channel.
 
     Returns:
-    float: Channel sinuosity.
+        float: Channel sinuosity.
     """
+    
+    # Sort by 'ID' to ensure upstream-to-downstream order
+    mainstream = mainstream.sort_values(by='id')
+    
+    # Merge all LineStrings into a single LineString
+    lines = mainstream.geometry.tolist()
+    merged_line = ops.linemerge(lines)
+    
+    # Verify the merged result is a single LineString
+    if not isinstance(merged_line, LineString):
+        raise ValueError("The geometries could not be merged into a single LineString.")
+    # Calculate total length
+    main_channel_length = merged_line.length
+    if main_channel_length == 0:
+        raise ValueError("Total length of the channel is zero. Ensure the channel geometry is valid and has length.")
+    
+    merged_line_coords = list(merged_line.coords)
+    start = merged_line_coords[0]
+    end = merged_line_coords[-1]
+    # Calculate straight-line distance between start and end points
+    straight_distance = np.sqrt((end[0] - start[0]) ** 2 + (end[1] - start[1]) ** 2)
+    
+    if straight_distance == 0:
+        raise ValueError("Straight-line distance is zero. Ensure the channel geometry is valid and has length.")
+
     return main_channel_length / straight_distance
 
 def extract_land_cover(landcover_raster, boundary_gpkg):
@@ -999,16 +1056,16 @@ def compute_land_cover_percentages(nlcd_array: np.ndarray, return_names: bool = 
     """
     Calculate the percentage of each land cover type within the preprocessed NLCD array.
 
-    Parameters:
+    Args:
     -----------
-    nlcd_array : np.ndarray
+    nlcd_array (np.ndarray): 
         Preprocessed NLCD array clipped to watershed.
-    return_names : bool, default=False
+    return_names (bool,  default=False):
         If True, return class names as keys; otherwise, return class codes.
 
     Returns:
     --------
-    dict
+    dict:
         Dictionary where keys are either NLCD land cover class codes or names, and values are percentages.
     """
 
@@ -1041,11 +1098,19 @@ def compute_land_cover_percentages(nlcd_array: np.ndarray, return_names: bool = 
 
     unique, counts = np.unique(valid_data, return_counts=True)
 
-    percentages = {}
+    percentages = {
+        NLCD_CLASSES[code] if return_names else f'lc_code_{int(code)}': np.float64()
+        for code in NLCD_CLASSES
+    }
 
     for class_code, count in zip(unique, counts):
-        key = NLCD_CLASSES.get(class_code, f'Unknown') if return_names else f'lc_code_{int(class_code)}'
-        percentages[key] = (count / total_pixels) * 100
+        key = NLCD_CLASSES.get(class_code) if return_names else f'lc_code_{int(class_code)}'
+        
+        # Only update if the key is a recognized NLCD class
+        if key in percentages: 
+            percentages[key] = (count / total_pixels) * 100
+        elif not return_names and f'lc_code_{int(class_code)}' in percentages: # Handle case if return_names is False and code exists
+            percentages[key] = (count / total_pixels) * 100
 
     return percentages
 
