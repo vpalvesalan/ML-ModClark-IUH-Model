@@ -4,15 +4,15 @@
 
 For reproducibilty purposes, the notebooks of this project must be viewed in the following order:
 1. [Study area](notebooks/preprocessing/1_study_area.ipynb)
-2. [DEM tiles downlaod] (notebooks/data_donwload/2_DEM_download.ipynb)
-3. [Precipitation data download] (notebooks/data_donwload/3_ppt_download.ipynb)
-4. [Streamflow data download] (notebooks/data_donwload/4_streaflow_download.ipynb)
-5. [Precipitation data preprocessing] (notebooks/preprocessing/5_ppt_historical_data_preprocessing.ipynb)
-6. [CRS and projection] (notebooks/preprocessing/6_define_utm_zone_projection.ipynb)
-7. [DEM preprocessing] (notebooks/preprocessing/7_dem_preprocessing.ipynb)
-8. [Watershed delineation] (notebooks/preprocessing/8_waterhsed_delineation.ipynb)
-9. [Geomorphological characteristics derivation] (notebooks/preprocessing/9_geomorphological_characteristics.ipynb)
-10. [Voronoi polygons - spatial distribution of rainfall] (notebooks/preprocessing/10_voronoi_polygons.ipynb)
+2. [DEM tiles downlaod](notebooks/data_donwload/2_DEM_download.ipynb)
+3. [Precipitation data download](notebooks/data_donwload/3_ppt_download.ipynb)
+4. [Streamflow data download](notebooks/data_donwload/4_streaflow_download.ipynb)
+5. [Precipitation data preprocessing](notebooks/preprocessing/5_ppt_historical_data_preprocessing.ipynb)
+6. [CRS and projection](notebooks/preprocessing/6_define_utm_zone_projection.ipynb)
+7. [DEM preprocessing](notebooks/preprocessing/7_dem_preprocessing.ipynb)
+8. [Watershed delineation](notebooks/preprocessing/8_waterhsed_delineation.ipynb)
+9. [Geomorphological characteristics derivation](notebooks/preprocessing/9_geomorphological_characteristics.ipynb)
+10. [Voronoi polygons - spatial distribution of rainfall](notebooks/preprocessing/10_voronoi_polygons.ipynb)
 
 
 
