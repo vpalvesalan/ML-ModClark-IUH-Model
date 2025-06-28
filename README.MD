@@ -3,7 +3,7 @@
 ## Notebooks
 
 For reproducibilty purposes, the notebooks of this project must be viewed in the following order:
-1. [Study Area](notebooks/data_download/1_study_area.ipynb)
+1. [Study Area](notebooks/preprocessing/1_study_area.ipynb)
 
 
 ## Problem Statement
