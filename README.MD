@@ -1,5 +1,11 @@
 # ML ModClark IUH Parameter Estimation
 
+## Notebooks
+
+For reproducibilty purposes, the notebooks of this project must be viewed in the following order:
+1. [Study Area](notebooks/data_download/1_study_area.ipynb)
+
+
 ## Problem Statement
 
 Accurately estimating the parameters of the ModClark Instantaneous Unit Hydrograph (IUH) is crucial for effective hydrological modeling, impacting vital applications such as flood forecasting, water resource management, dam safety, and predicting streamflow responses to future land cover changes. Traditional methods for determining these parameters often rely heavily on historical observed rainfall-runoff data within a specific basin. This dependency poses significant challenges, particularly in ungauged basins where such data is scarce or entirely unavailable. Furthermore, even in gauged basins, the calibration processes can be time-consuming, and may not always yield optimal parameter sets that generalize well to different future conditions.
