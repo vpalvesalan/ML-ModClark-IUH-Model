@@ -1,8 +1,6 @@
 # ML ModClark IUH Parameter Estimation
 
-## Notebooks
-
-For reproducibilty purposes, the notebooks of this project must be viewed in the following order:
+**Notebooks**: For reproducibilty purposes, the notebooks of this project must be viewed in the following order:
 1. [Study area](notebooks/preprocessing/1_study_area.ipynb)
 2. [DEM tiles downlaod](notebooks/data_donwload/2_DEM_download.ipynb)
 3. [Precipitation data download](notebooks/data_donwload/3_ppt_download.ipynb)
