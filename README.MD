@@ -12,6 +12,12 @@
 9. [Geomorphological characteristics derivation](notebooks/preprocessing/9_geomorphological_characteristics.ipynb)
 10. [Voronoi polygons - spatial distribution of rainfall](notebooks/preprocessing/10_voronoi_polygons.ipynb)
 
+**Improvement Oportunities**:
+- Finer DEM resolution: 10m resolution would more precise watershed boundaries and geomorphological characteristcs.
+- Manually check delineated watershed: it both would provide more precise watershed boundaries and increase the number of watersheds suitable for modeling.
+- Clean low quality tabular data
+
+
 
 
 ## Problem Statement
