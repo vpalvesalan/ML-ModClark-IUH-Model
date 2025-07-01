@@ -292,9 +292,36 @@ All storm events within a 10-year period of data will be considered for paramete
    * Rainfall duration.
    * Month of occurrence.
 
-#### Baseflow Separation
+#### Baseflow Separation: Concept and Methodology
 
-Baseflow separation is performed using the Recursive Digital Filter (RDF). Baseflow is the portion of streamflow that comes from subsurface sources, such as groundwater discharge. It is necessary to separate baseflow from the total streamflow to isolate the direct runoff component, which is the focus of IUH. The RDF method is chosen for its simplicity and effectiveness in separating baseflow from direct runoff. The RDF works by applying a filter to the streamflow data to partition it into baseflow and direct runoff components.
+In hydrological studies, particularly when analyzing storm events and catchment responses, distinguishing between the **baseflow** and the **quickflow** (or direct runoff) components of streamflow is essential. Baseflow represents the sustained, delayed flow from groundwater and subsurface contributions, providing the perennial flow of streams. In contrast, quickflow is the immediate and rapid response to precipitation events, representing surface and near-surface runoff.
+
+For this study, baseflow separation is a critical preprocessing step for accurately isolating storm-induced runoff from total streamflow measurements. We adopted the **recursive digital filter (RDF)** approach, specifically the **Lyne-Hollick filter**, due to its simplicity, computational efficiency, and wide acceptance in hydrological research. This filter is described by the following equation:
+
+$Q_b(t) = \alpha Q_b(t-1) + \frac{1 - \alpha}{2} [Q(t) + Q(t-1)]$
+
+Where:
+* $Q_b(t)$ is the filtered baseflow at time $t$.
+* $Q_b(t-1)$ is the filtered baseflow at the previous time step $t-1$.
+* $Q(t)$ is the total observed streamflow at time $t$.
+* $Q(t-1)$ is the total observed streamflow at the previous time step $t-1$.
+* $\alpha$ is the **recession parameter**, a dimensionless filtering constant that controls the degree of smoothing and baseflow responsiveness.
+
+
+When applying this recursive filter, an initial value for $Q_b(t-1)$ is required to begin the computation. For the very first observation in the time series ($t=0$), we assume that the **entire observed streamflow is baseflow** ($Q_b(0) = Q(0)$). This is a common and hydrologically sound initialization, as it presumes the stream is in a baseflow-dominated state at the beginning of the record.
+
+To ensure effective separation of baseflow while minimizing distortion of the original streamflow hydrograph, the filter will be applied in **three successive passes**: forward, backward, and then forward again. This multi-pass application is a widely recommended and standard procedure in hydrological baseflow separation guidelines.
+
+The initialization for each pass is critical:
+1.  **First Pass (Forward):** For the initial forward pass (from time $t_0$ to $t_N$), the baseflow for the very first observation is assumed to be equal to the total observed streamflow: $Q_{b, \text{pass1}}(t_0) = Q(t_0)$. The filter then progresses through the time series.
+2.  **Second Pass (Backward):** For the second pass, the filter runs in the reverse direction (from time $t_N$ back to $t_0$). The input for this pass is the baseflow series computed in the first (forward) pass. Therefore, the initial baseflow value for the backward pass is set to the **last baseflow value calculated by the first forward pass**: $Q_{b, \text{pass2}}(t_N) = Q_{b, \text{pass1}}(t_N)$. The filter then iterates backward.
+3.  **Third Pass (Forward):** For the third and final pass, the filter runs forward again (from time $t_0$ to $t_N$). The input for this pass is the baseflow series resulting from the second (backward) pass. The initial baseflow value for this third forward pass is set to the **first baseflow value calculated by the second backward pass**: $Q_{b, \text{pass3}}(t_0) = Q_{b, \text{pass2}}(t_0)$. The filter then progresses forward, providing the final separated baseflow hydrograph.
+
+This multi-pass approach is chosen because it significantly **mitigates "warm-up" and "cool-down" edge effects** inherent in recursive filters, ensuring a more symmetrical and consistently smoothed baseflow hydrograph across the entire record. Given the extensive scale of our dataset—encompassing **about 500 gauging stations** with **10 years of 15-minute interval streamflow data**—the influence of the initial assumption on the overall baseflow separation quickly diminishes as the filter propagates through the extensive time series, ensuring robust results for the majority of the record.
+
+
+
+The Lyne-Hollick filter requires the calibration of the recession parameter, $\alpha$. While literature suggests that $\alpha$ should ideally be adjusted according to catchment characteristics such as slope, area, and land cover, a pragmatic decision was made for this study. Applying a uniform $\alpha$ value of **0.925** across all watersheds was deemed a computationally efficient and practically sound approach, aligning with common recommendations in hydrological practice for similar studies. This robust methodology provides a consistent and defensible foundation for subsequent storm event detection and analysis.
 
 #### Voronoi Polygon
 
