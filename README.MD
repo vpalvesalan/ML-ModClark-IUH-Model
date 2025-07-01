@@ -1,6 +1,6 @@
 # ML ModClark IUH Parameter Estimation
 
-**Notebooks**: For reproducibilty purposes, the notebooks of this project must be viewed in the following order:
+**Notebooks**: For reproducibility purposes, the notebooks of this project must be viewed in the following order:
 1. [Study area](notebooks/preprocessing/1_study_area.ipynb)
 2. [DEM tiles downlaod](notebooks/data_donwload/2_DEM_download.ipynb)
 3. [Precipitation data download](notebooks/data_donwload/3_ppt_download.ipynb)
@@ -11,24 +11,30 @@
 8. [Watershed delineation](notebooks/preprocessing/8_waterhsed_delineation.ipynb)
 9. [Geomorphological characteristics derivation](notebooks/preprocessing/9_geomorphological_characteristics.ipynb)
 10. [Voronoi polygons - spatial distribution of rainfall](notebooks/preprocessing/10_voronoi_polygons.ipynb)
+11. [Line up streamflow and precipitation data](notebooks/preprocessing/11_tabular_data_preprocessing.ipynb)
+12. [Storm events selection](notebooks/hydrological_model/12_storm_event_selection.ipynb)
+13. [Hydrological parameters optmization](notebooks/hydrological_model/13_ModClark_params_optimization.ipynb)
+14. [Opmized event exploratory analysis](notebooks/hydrological_model/14_explorartory_analysis.ipynb)
+15. [Explortaroy data analysis on features](notebooks/ML_model/15_exploratory_data_analysis.ipynb)
+16. [Machine learning model and evaluation](notebooks/ML_model/16_ML_modeling_and_evaluation.ipynb)
 
 **Improvement Oportunities**:
-- Finer DEM resolution: 10m resolution would more precise watershed boundaries and geomorphological characteristcs.
-- Manually check delineated watershed: it both would provide more precise watershed boundaries and increase the number of watersheds suitable for modeling.
-- Clean low quality tabular data
+- Finer DEM resolution: 10m resolution would provide more precise watershed boundaries and geomorphological characteristics.
+- Manually check delineated watershed: it would both provide more precise watershed boundaries and increase the number of watersheds suitable for modeling.
+- Clean low-quality tabular data
 
 
 
 
 ## Problem Statement
 
-Accurately estimating the parameters of the ModClark Instantaneous Unit Hydrograph (IUH) is crucial for effective hydrological modeling, impacting vital applications such as flood forecasting, water resource management, dam safety, and predicting streamflow responses to future land cover changes. Traditional methods for determining these parameters often rely heavily on historical observed rainfall-runoff data within a specific basin. This dependency poses significant challenges, particularly in ungauged basins where such data is scarce or entirely unavailable. Furthermore, even in gauged basins, the calibration processes can be time-consuming, and may not always yield optimal parameter sets that generalize well to different future conditions.
+Accurately estimating the parameters of the ModClark Instantaneous Unit Hydrograph (IUH) is crucial for effective hydrological modeling, impacting vital applications such as flood forecasting, water resource management, dam safety, and predicting streamflow responses to future land cover changes. Traditional methods for determining these parameters often rely heavily on historical observed rainfall-runoff data within a specific basin. This dependency poses significant challenges, particularly in ungauged basins where such data is scarce or entirely unavailable. Furthermore, even in gauged basins, the calibration processes can be time-consuming and may not always yield optimal parameter sets that generalize well to different future conditions.
 
 This project addresses these limitations by leveraging machine learning techniques to develop a model capable of estimating the ModClark IUH parameters (time of concentration and storage coefficient) based on readily available physiographic characteristics and storm events of a watershed. By establishing the relationship between these basin characteristics and the IUH parameters, the developed model aims to provide a more objective, efficient, and potentially more accurate approach to parameter estimation, especially in data-scarce regions. This work has the potential to significantly enhance the applicability and reliability of hydrological models across a wider range of scenarios and locations, particularly within the [**DEFINE STUDY REGION**], the intended study region for application and validation with hydrology practitioners.
 
 ## Instantaneous Unit Hydrograph (IUH) Concepts
 
-The Instantaneous Unit Hydrograph (IUH) is a fundamental concept in hydrology that represents the theoretical direct runoff hydrograph resulting from a unit volume (e.g., 1 mm or 1 inch) of effective rainfall applied instantaneously and uniformly over the entire drainage basin. It essentially characterizes the basin's response to a unit impulse of rainfal, and conceptually, _it is unique for each watershed_.
+The Instantaneous Unit Hydrograph (IUH) is a fundamental concept in hydrology that represents the theoretical direct runoff hydrograph resulting from the application of a unit volume (e.g., 1 mm or 1 inch) of effective rainfall instantaneously and uniformly over the entire drainage basin. It characterizes the basin's response to a unit impulse of rainfall, and conceptually, _it is unique for each watershed_.
 
 Key assumptions underlying the IUH concept include:
 
