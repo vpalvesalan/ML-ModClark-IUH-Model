@@ -321,7 +321,7 @@ This multi-pass approach is chosen because it significantly **mitigates "warm-up
 
 
 
-The Lyne-Hollick filter requires the calibration of the recession parameter, $\alpha$. While literature suggests that $\alpha$ should ideally be adjusted according to catchment characteristics such as slope, area, and land cover, a pragmatic decision was made for this study. Applying a uniform $\alpha$ value of **0.925** across all watersheds was deemed a computationally efficient and practically sound approach, aligning with common recommendations in hydrological practice for similar studies. This robust methodology provides a consistent and defensible foundation for subsequent storm event detection and analysis.
+The Lyne-Hollick filter requires the calibration of the recession parameter, $\alpha$. While literature suggests that $\alpha$ should ideally be adjusted according to catchment characteristics such as slope, area, and land cover, a pragmatic decision was made for this study. Applying a uniform $\alpha$ value of **0.999** across all watersheds was deemed a practically sound approach. This value was chosen through the visual inspection of several storm events for multiple watersheds. This robust methodology provides a consistent and defensible foundation for subsequent storm event detection and analysis.
 
 #### Voronoi Polygon
 
