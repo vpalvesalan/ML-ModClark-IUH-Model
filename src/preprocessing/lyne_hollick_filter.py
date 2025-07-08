@@ -6,16 +6,16 @@ def lyne_hollick_filter(flow_series, alpha=0.925):
     Apply the Lyne-Hollick recursive digital filter with three passes,
     forward, backward, forward, to separate quickflow.
 
-    Parameters:
+    Parameters
     -----------
     flow_series : list or pandas.Series
         The streamflow time series data. Must contain no NA values.
     alpha : float
         Recession parameter controlling smoothing (default = 0.925).
 
-    Returns:
+    Returns
     --------
-    baseflow : np.ndarray
+    baseflow: np.ndarray
         Estimated baseflow component of the streamflow.
     """
     
