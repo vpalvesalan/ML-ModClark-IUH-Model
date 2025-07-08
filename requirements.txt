@@ -16,3 +16,4 @@ tqdm==4.67.1
 ipywidgets==8.1.7
 pysheds==0.4
 networkx==3.4.2
+fastparquet==2024.11.0
