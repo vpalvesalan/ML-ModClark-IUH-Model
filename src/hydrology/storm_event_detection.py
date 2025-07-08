@@ -1,6 +1,9 @@
+import copy
 import pandas as pd
 import numpy as np
 from datetime import timedelta
+
+pd.set_option('future.no_silent_downcasting', True)
 
 def detect_storm_events(df, time_step_minutes=15):
     """
@@ -36,6 +39,7 @@ def detect_storm_events(df, time_step_minutes=15):
         - 'height': Total precipitation depth for each time step.
         - 'ppt_stn_*': Optional columns for individual precipitation stations, used for
           calculating spatial variability.
+        - 'missing_streamflow': Optional column indicating missing streamflow data points.
     time_step_minutes : int, optional
         The time resolution of the data in minutes (default is 15). This is used
         to calculate event durations in hours.
@@ -62,6 +66,8 @@ def detect_storm_events(df, time_step_minutes=15):
         df['date'] = pd.to_datetime(df['date'])
         df.set_index('date', inplace=True)
 
+    df.sort_index(inplace=True)
+
     # --- Constants for event criteria ---
     MIN_QUICKFLOW_STEPS = 12
     MAX_TIME_SINCE_PPT = timedelta(hours=3)
@@ -73,8 +79,8 @@ def detect_storm_events(df, time_step_minutes=15):
 
     # --- Step 1: Identify all contiguous blocks of non-zero quickflow ---
     is_qf = df['quickflow'] > 0
-    qf_starts = df.index[is_qf & ~is_qf.shift(1).fillna(False)]
-    qf_ends = df.index[is_qf & ~is_qf.shift(-1).fillna(False)]
+    qf_starts = df.index[is_qf & ~(is_qf.shift(1).fillna(False).infer_objects(copy=False))]
+    qf_ends = df.index[is_qf & ~(is_qf.shift(-1).fillna(False).infer_objects(copy=False))]
 
     if len(qf_ends) < len(qf_starts):
         qf_ends = qf_ends.append(pd.Index([df.index[-1]]))
@@ -156,6 +162,12 @@ def detect_storm_events(df, time_step_minutes=15):
 
         # Response after the first precipitation
         response_min = (first_ppt_time - event_start_time).total_seconds() / 60
+
+        # Missing streamflow data points
+        if 'missing_streamflow' in event_df.columns:
+            missing_streamflow = event_df['missing_streamflow'].isna().sum()
+        else:
+            missing_streamflow = 0
         
         antecedent = {}
         antecedent_end_time = event_start_time - timedelta(minutes=time_step_minutes)
@@ -184,6 +196,7 @@ def detect_storm_events(df, time_step_minutes=15):
             'ppt_temporal_variability': temporal_var,
             'ppt_spatial_variability': spatial_var,
             'n_ppt_stations': len(ppt_cols),
+            'missing_streamflow': missing_streamflow,
             **antecedent,
             **post
         })
