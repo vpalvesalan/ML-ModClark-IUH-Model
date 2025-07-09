@@ -206,7 +206,7 @@ The following step-by-step guide summarizes the procedures defined above, to go 
 9. Convert to Volumetric Discharge
    - Multiply depth-rate $Q(t)$ by watershed area $A$ to obtain volumetric discharge using Equation (11): $Q_{\mathrm{vol}}(t) = Q(t)\,\times\,A$
 
-By following this procedure, you can compute the IUH and simulate streamflow hydrographs using the ModClark method.
+By following this procedure, IUH can be computed and streamflow hydrographs simulated using the ModClark method.
                                                             
 ### Preprocessing
 
