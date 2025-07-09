@@ -113,7 +113,7 @@ where:
 - $A$ [$L^2$] is the total watershed area;
 - $\Delta t$ [$T$] is the time step.
 
-The contributing area $A_i$ is obtained by summing the areas of all grid cells $k$ whose travel time $t_k$ falls within the $i$th interval:
+The contributing area $A_i$ (time-area histogram)  is obtained by summing the areas of all grid cells $k$ whose travel time $t_k$ falls within the $i$th interval:
 
 $$
 A_i = \sum_{\substack{k\\(i-1)\Delta t < t_k \le i\Delta t}} A_k
