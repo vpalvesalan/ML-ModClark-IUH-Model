@@ -4,7 +4,7 @@ venv/
 data/bronze
 data/silver
 data/gold/geo
-data/gold/tabular/lined_up_data
+data/gold/tabular
 .DS_Store
 
 

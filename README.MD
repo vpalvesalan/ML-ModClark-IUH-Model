@@ -22,6 +22,13 @@
 - Finer DEM resolution: 10m resolution would provide more precise watershed boundaries and geomorphological characteristics.
 - Manually check delineated watershed: it would both provide more precise watershed boundaries and increase the number of watersheds suitable for modeling.
 - Clean low-quality tabular data
+- Further investigate dropped low quality data in attempt to improve their quality and keep them in the analysis increasing the number of data points.
+
+**Dropped watershed stations**
+- Lack of historical data within the period of study XXXXXX
+- Low quality  watershed delineation
+- Lack of enough storm events suitable for modeling
+
 
 
 
