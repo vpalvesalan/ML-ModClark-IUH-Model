@@ -12,10 +12,13 @@ class ModClarkModel:
 
     Attributes:
         df (pd.DataFrame): DataFrame containing the storm event data, including 'quickflow' and 'height'.
-        distance_grid (np.ndarray): A 2D grid of flow distances to the watershed outlet.
+        distance_grid (np.ndarray): A 2D NumPy array where each cell value is the
+                                        flow distance from that cell to the watershed outlet [m].
+                                        This grid should not contain negative values (e.g., NaN or
+                                        no-data values should be handled beforehand).
         cell_area (float): The area of a single grid cell in square meters.
         total_area (float): The total area of the watershed in square meters.
-        max_distance (float): The maximum flow distance within the watershed.
+        max_distance (float): The maximum flow distance within the watershed in meters.
         delta_t (float): The time step of the model in seconds.
     """
 
@@ -31,7 +34,23 @@ class ModClarkModel:
         self.max_distance = np.max(distance_grid)
 
     def _compute_time_area_histogram(self, tc: float) -> np.ndarray:
-        """Computes the time-area histogram for a given time of concentration (Tc)."""
+        """
+        Computes the time-area histogram for a watershed based on travel times.
+
+        This method translates a spatial grid of flow distances to the outlet into a
+        temporal distribution of contributing areas. It calculates the travel time for each
+        grid cell using the basin's time of concentration (Tc) and then discretizes these
+        times into bins, summing the area in each bin.
+
+        Args:
+            tc (float): The basin's time of concentration in seconds. This parameter is
+                        being optimized.
+
+        Returns:
+            np.ndarray: A 1D NumPy array representing the time-area histogram. The index
+                        corresponds to the time step, and the value is the total contributing
+                        area [m²] for that interval.
+        """
         if self.max_distance <= 0:
             return np.array([self.total_area])
 
@@ -46,7 +65,25 @@ class ModClarkModel:
         )
 
     def _calculate_modclark_iuh(self, r: float, area_time_histogram: np.ndarray) -> np.ndarray:
-        """Computes the scaled ModClark Instantaneous Unit Hydrograph."""
+        """
+        Computes the ModClark Instantaneous Unit Hydrograph (IUH) and scales it.
+
+        This method implements the ModClark model's recursive routing approach. It translates
+        the inflow, derived from the watershed's time-area histogram, through a conceptual
+        linear reservoir at the basin outlet to generate the IUH. The final unit hydrograph
+        is truncated when its cumulative volume exceeds 0.995 and then scaled to ensure
+        the total volume is exactly 1.0.
+
+        Args:
+            r (float): The storage coefficient of the linear reservoir in seconds. This
+                    parameter governs the attenuation of the hydrograph.
+            area_time_histogram (np.ndarray): A 1D NumPy array representing the distribution of
+                                            watershed area contributing to flow over time. The
+                                            index corresponds to the time step, and the value
+                                            is the contributing area in square meters.
+        Returns:
+            np.ndarray: A 1D NumPy array of the final, scaled unit hydrograph ordinates [T⁻¹].
+        """
         c = self.delta_t / (r + 0.5 * self.delta_t)
         inflow = area_time_histogram / (self.total_area * self.delta_t) if self.total_area > 0 else np.zeros_like(area_time_histogram)
         
@@ -70,7 +107,22 @@ class ModClarkModel:
         return unit_hydrograph * scaling_factor
 
     def _apply_precipitation_loss(self, initial_loss: float, constant_loss_rate: float) -> np.ndarray:
-        """Calculates the excess precipitation hyetograph."""
+        """
+        Calculates the excess precipitation hyetograph using an initial and constant loss model.
+
+        This method simulates surface runoff generation by first satisfying an initial abstraction
+        (e.g., interception, depression storage) from the start of the storm. Once this initial
+        volume is met, a continuous, constant rate of loss (e.g., infiltration) is subtracted
+        from the remaining rainfall intensity for the rest of the event.
+
+        Args:
+            initial_loss (float): The total amount of initial abstraction [m] that must be
+                                satisfied before any runoff can occur.
+            constant_loss_rate (float): The continuous rate of precipitation loss [m/s] that
+                                        occurs after the initial loss is met.
+        Returns:
+            np.ndarray: A 1D NumPy array of the excess precipitation [m] for each time step.
+        """
         excess_precip = self.df['height'].values.copy()
         remaining_initial_loss = initial_loss
         
@@ -88,12 +140,42 @@ class ModClarkModel:
         return np.maximum(0, excess_precip - constant_loss_per_step)
 
     def _convolve_uh_with_precipitation(self, excess_precip: np.ndarray, unit_hydrograph: np.ndarray) -> np.ndarray:
-        """Performs convolution to generate the direct runoff hydrograph."""
-        simulated_hydrograph_depth_rate = np.convolve(excess_precip, unit_hydrograph)[:len(excess_precip)] * self.delta_t
+        """
+        Performs convolution to generate the direct runoff hydrograph.
+
+        This function simulates the watershed's runoff response by convolving the excess
+        precipitation hyetograph (the input signal) with the unit hydrograph (the watershed's
+        response function). The resulting depth-rate hydrograph is then scaled by the
+        watershed area to produce the final volumetric discharge hydrograph.
+
+        Args:
+            excess_precip (np.ndarray): A 1D NumPy array of the excess precipitation [m] for
+                                        each time step.
+            unit_hydrograph (np.ndarray): A 1D NumPy array of the unit hydrograph ordinates [T⁻¹].
+
+        Returns:
+            np.ndarray: A 1D NumPy array of the simulated volumetric discharge [m³/s].
+        """
+        simulated_hydrograph_depth_rate = np.convolve(excess_precip, unit_hydrograph)* self.delta_t
         return simulated_hydrograph_depth_rate * self.total_area
 
     def _nse_objective_function(self, params: list) -> float:
-        """Internal objective function (1 - NSE) for the optimization algorithm."""
+        """
+        Objective function for the optimization, calculating 1 - NSE.
+
+        This method serves as the bridge between the optimization algorithm and the
+        hydrological model. It takes a set of model parameters, runs a full simulation
+        to generate a hydrograph, and then evaluates its goodness-of-fit against observed
+        data using the Nash-Sutcliffe Efficiency (NSE) coefficient. The function returns
+        1 - NSE because optimization algorithms typically perform minimization.
+
+        Args:
+            params (list): A list containing the model parameters to be optimized, in the
+                        order: [Tc (s), R (s), initial_loss (m), constant_loss_rate (m/s)].
+
+        Returns:
+            float: The value of 1 - NSE. A perfect model fit would return 0.
+        """
         tc, r, initial_loss, constant_loss_rate = params
 
         # Run the full simulation sequence with the given parameters
@@ -103,10 +185,10 @@ class ModClarkModel:
         simulated_flow = self._convolve_uh_with_precipitation(excess_precip=excess_precip, unit_hydrograph=unit_hydrograph)
         
         observed_flow = self.df['quickflow'].values
-        if len(simulated_flow) < len(observed_flow):
-            simulated_flow = np.pad(simulated_flow, (0, len(observed_flow) - len(simulated_flow)), 'constant')
-        else:
+        if len(simulated_flow) > len(observed_flow):
             simulated_flow = simulated_flow[:len(observed_flow)]
+        elif len(simulated_flow) < len(observed_flow):
+            simulated_flow = np.pad(simulated_flow, (0, len(observed_flow) - len(simulated_flow)), 'constant')
             
         numerator = np.sum((observed_flow - simulated_flow) ** 2)
         denominator = np.sum((observed_flow - np.mean(observed_flow)) ** 2)
@@ -117,35 +199,77 @@ class ModClarkModel:
         nse = 1 - (numerator / denominator)
         return 1 - nse
 
-    def run_optimization(self) -> dict:
+    def run_optimization(self, basin_length_m: float = None, slope_10_85: float = None, display: bool = True) -> dict:
         """
         Runs the Differential Evolution optimization to calibrate model parameters.
+
+        This method can dynamically set the search bounds for Tc and R if watershed
+        characteristics are provided.
+
+        Args:
+            basin_length_m (float, optional): The length of the main channel of the basin in meters.
+            slope_10_85 (float, optional): The average channel slope as a decimal (e.g., 0.02 for 2%).
+            display (bool, optional): If True, prints progress and results to the console. Defaults to True.
 
         Returns:
             dict: A dictionary containing the optimization results.
         """
-        print("--- 🚀 Starting Optimization ---")
-        
-        bounds = [
-            (3600, 10 * 3600),
-            (3600, 20 * 3600),
-            (0.0, self.df['height'].sum() * 0.5),
-            (0.00001, 0.0001)
-        ]
+        if display:
+            print("--- 🚀 Starting Optimization ---")
 
+        # --- Set parameter search bounds ---
+        if basin_length_m is not None and slope_10_85 is not None:
+            # Dynamically set bounds using Kirpich formula and rules of thumb
+            if display:
+                print("Using dynamic bounds based on watershed characteristics.")
+
+            # Kirpich formula gives Tc in hours
+            tc_kirpich_hr = 0.000323 * (basin_length_m ** 0.77) * (slope_10_85 ** -0.385)
+
+            # Tc bounds in seconds
+            tc_min_sec = 0.4 * tc_kirpich_hr * 3600
+            tc_max_sec = 2.5 * tc_kirpich_hr * 3600
+            tc_bounds = (tc_min_sec, tc_max_sec)
+
+            # R bounds in seconds, derived from Tc bounds
+            r_min_sec = 1.0 * tc_min_sec
+            r_max_sec = 3.0 * tc_max_sec
+            r_bounds = (r_min_sec, r_max_sec)
+            
+            bounds = [
+                tc_bounds,
+                r_bounds,
+                (0.0, self.df['height'].sum() * 0.5), # Initial Loss
+                (0.00001, 0.0001)                    # Constant Loss
+            ]
+        else:
+            # Use fixed, default bounds if no characteristics are provided
+            if display:
+                print("Using fixed, default search bounds.")
+            bounds = [
+                (3600, 10 * 3600),      # Tc (1-10 hours)
+                (3600, 20 * 3600),      # R (1-20 hours)
+                (0.0, self.df['height'].sum() * 0.5), # Initial Loss
+                (0.00001, 0.0001)       # Constant Loss
+            ]
+
+        # --- Run the optimization ---
         result = differential_evolution(
             func=self._nse_objective_function,
             bounds=bounds,
             strategy='best1bin',
             maxiter=200,
-            popsize=15,
+            popsize=20,
             tol=0.01,
             mutation=(0.5, 1),
             recombination=0.7,
-            disp=True
+            disp=display # Control console output
         )
 
-        print("--- ✅ Optimization Complete ---")
+        # --- Process and return results ---
+        if display:
+            print("--- ✅ Optimization Complete ---")
+
         optimized_params = result.x
         final_nse = 1 - result.fun
 
@@ -157,11 +281,11 @@ class ModClarkModel:
             "final_nse": final_nse
         }
         
-        for key, val in results_dict.items():
-            print(f"{key.replace('_', ' ').title():<30}: {val:.4f}")
+        if display:
+            for key, val in results_dict.items():
+                print(f"{key.replace('_', ' ').title():<30}: {val:.4f}")
 
         return results_dict
-
 
 def main():
     """
