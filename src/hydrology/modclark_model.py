@@ -23,15 +23,22 @@ class ModClarkModel:
     """
 
     def __init__(self, df: pd.DataFrame, distance_grid: np.ndarray, cell_area: float, delta_t: float):
-        """Initializes the ModClarkModel with watershed and storm data."""
-        self.df = df
-        self.distance_grid = distance_grid
-        self.cell_area = cell_area
-        self.delta_t = delta_t
-        
-        # Pre-calculate static watershed properties
-        self.total_area = np.count_nonzero(distance_grid >= 0) * self.cell_area
-        self.max_distance = np.max(distance_grid)
+            """
+            Initializes the ModClarkModel with watershed and storm data.
+
+            This constructor also pre-processes the distance grid to filter out
+            non-finite values for computational efficiency.
+            """
+            self.df = df
+            self.distance_grid = distance_grid
+            self.cell_area = cell_area
+            self.delta_t = delta_t
+
+
+            valid_mask = np.isfinite(self.distance_grid)
+            self.valid_distances = self.distance_grid[valid_mask]
+            self.max_distance = np.max(self.valid_distances) if self.valid_distances.size > 0 else 0
+            self.total_area = self.valid_distances.size * self.cell_area
 
     def _compute_time_area_histogram(self, tc: float) -> np.ndarray:
         """
@@ -51,16 +58,17 @@ class ModClarkModel:
                         corresponds to the time step, and the value is the total contributing
                         area [m²] for that interval.
         """
+
         if self.max_distance <= 0:
             return np.array([self.total_area])
 
-        travel_time_grid = tc * (self.distance_grid / self.max_distance)
+        travel_time_grid = tc * (self.valid_distances / self.max_distance)
         num_bins = int(np.ceil(tc / self.delta_t)) + 1
         bin_indices = (travel_time_grid / self.delta_t).astype(int)
 
         return np.bincount(
             bin_indices.flatten(),
-            weights=np.full(bin_indices.size, self.cell_area, dtype=float),
+            weights=np.full(self.valid_distances.size, self.cell_area, dtype=float),
             minlength=num_bins
         )
 
@@ -125,16 +133,21 @@ class ModClarkModel:
         """
         excess_precip = self.df['height'].values.copy()
         remaining_initial_loss = initial_loss
+
+        rain_mask = self.df['height'].values > 0
         
-        for i in range(len(excess_precip)):
-            if remaining_initial_loss > 0:
-                precip_at_step = excess_precip[i]
-                if precip_at_step >= remaining_initial_loss:
-                    excess_precip[i] -= remaining_initial_loss
-                    remaining_initial_loss = 0
-                else:
-                    remaining_initial_loss -= precip_at_step
-                    excess_precip[i] = 0
+        for i in np.where(rain_mask)[0]:
+            if remaining_initial_loss <= 0:
+                break
+
+            precip_at_step = excess_precip[i]
+            if precip_at_step >= remaining_initial_loss:
+                excess_precip[i] -= remaining_initial_loss
+                remaining_initial_loss = 0
+            else:
+                remaining_initial_loss -= precip_at_step
+                excess_precip[i] = 0
+        
                     
         constant_loss_per_step = constant_loss_rate * self.delta_t
         return np.maximum(0, excess_precip - constant_loss_per_step)
@@ -238,9 +251,7 @@ class ModClarkModel:
             
             bounds = [
                 tc_bounds,
-                r_bounds,
-                (0.0, self.df['height'].sum() * 0.5), # Initial Loss
-                (0.00001, 0.0001)                    # Constant Loss
+                r_bounds
             ]
         else:
             # Use fixed, default bounds if no characteristics are provided
@@ -249,17 +260,38 @@ class ModClarkModel:
             bounds = [
                 (3600, 10 * 3600),      # Tc (1-10 hours)
                 (3600, 20 * 3600),      # R (1-20 hours)
-                (0.0, self.df['height'].sum() * 0.5), # Initial Loss
-                (0.00001, 0.0001)       # Constant Loss
             ]
+
+        # Initial loss bounds in meters
+        total_ppt = self.df['height'].sum()
+        ppt_start_iloc = (self.df['height'] > 0).idxmax()
+
+        if (self.df['quickflow'] > 0).any():
+            quickflow_start_iloc = (self.df['quickflow'] > 0).idxmax()
+        else:
+            quickflow_start_iloc = self.df.index[-1]
+        min_initial_loss = self.df.loc[ppt_start_iloc:quickflow_start_iloc, 'height'].sum()
+        max_initial_loss = min_initial_loss * 2 if min_initial_loss > 0 else self.df['height'].sum() * 0.1
+        max_initial_loss = min(max_initial_loss, total_ppt * 0.75)
+        initial_loss_bounds = (min_initial_loss, max_initial_loss)
+        initial_loss_bounds = (0, total_ppt)
+
+        # Constant loss rate bounds in meters per second
+        ppt_time_steps = np.sum(self.df['height']>0)
+        if ppt_time_steps < 0:
+            raise ValueError("Total precipitation in the storm event should be greater than 0.")
+        max_constant_loss_rate = (total_ppt - max_initial_loss)  / (ppt_time_steps * self.delta_t)
+        constant_loss_bounds = (0, max_constant_loss_rate) 
+
+        bounds += [initial_loss_bounds, constant_loss_bounds]
 
         # --- Run the optimization ---
         result = differential_evolution(
             func=self._nse_objective_function,
             bounds=bounds,
             strategy='best1bin',
-            maxiter=200,
-            popsize=20,
+            maxiter=500,
+            popsize=50,
             tol=0.01,
             mutation=(0.5, 1),
             recombination=0.7,
@@ -271,14 +303,14 @@ class ModClarkModel:
             print("--- ✅ Optimization Complete ---")
 
         optimized_params = result.x
-        final_nse = 1 - result.fun
+        final_nse = result.fun
 
         results_dict = {
             "optimized_tc_hr": optimized_params[0] / 3600,
             "optimized_r_hr": optimized_params[1] / 3600,
-            "optimized_initial_loss_m": optimized_params[2],
+            "optimized_initial_loss_mm": optimized_params[2]*1000,
             "optimized_constant_loss_mm_hr": optimized_params[3] * 1000 * 3600,
-            "final_nse": final_nse
+            "nse": 1-final_nse
         }
         
         if display:
@@ -287,43 +319,33 @@ class ModClarkModel:
 
         return results_dict
 
-def main():
-    """
-    Main orchestrator function to demonstrate the use of the ModClarkModel class.
-    """
-    # --- 1. S E T U P ---
-    # Load or create the necessary input data for a single storm event.
-    
-    # 🚨 **ACTION REQUIRED**: Replace this synthetic data with your actual data.
-    # For example, load a distance grid from a file:
-    # distance_grid = np.load('path/to/your/distance_grid.npy')
-    distance_grid = np.random.rand(100, 100) * 5000 # Synthetic grid
-    cell_area = 30 * 30  # Area of one cell (e.g., 30m x 30m)
-    
-    # Create a synthetic DataFrame for demonstration.
-    time_steps = 200
-    delta_t_minutes = 15
-    delta_t_seconds = float(delta_t_minutes * 60)
-    
-    storm_df = pd.DataFrame({
-        'height': np.zeros(time_steps),
-        'quickflow': np.zeros(time_steps)
-    })
-    storm_df.loc[10:19, 'height'] = [0.001, 0.002, 0.005, 0.008, 0.01, 0.007, 0.004, 0.003, 0.002, 0.001]
-    storm_df.loc[15:44, 'quickflow'] = [10, 25, 50, 80, 120, 150, 130, 100, 80, 60, 45, 35, 28, 22, 18, 15, 12, 10, 8, 6, 5, 4, 3, 2, 1.5, 1, 0.8, 0.6, 0.4, 0.2]
+    def simulate(self, tc: float, r: float, initial_loss: float, constant_loss_rate: float) -> np.ndarray:
+            """
+            Runs a single simulation with a given set of parameters.
 
-    # --- 2. M O D E L  E X E C U T I O N ---
-    # Instantiate the model for the specific watershed and storm
-    model = ModClarkModel(
-        df=storm_df,
-        distance_grid=distance_grid,
-        cell_area=cell_area,
-        delta_t=delta_t_seconds
-    )
+            This public method is intended for use after optimization to generate the
+            final simulated hydrograph with the optimal parameters.
 
-    # Run the optimization
-    results = model.run_optimization()
+            Args:
+                tc (float): The time of concentration in seconds.
+                r (float): The storage coefficient in seconds.
+                initial_loss (float): The initial loss in meters.
+                constant_loss_rate (float): The constant loss rate in m/s.
 
+            Returns:
+                np.ndarray: The final simulated hydrograph in m³/s.
+            """
+            # Run the full simulation sequence with the provided parameters
+            area_histogram = self._compute_time_area_histogram(tc=tc)
+            unit_hydrograph = self._calculate_modclark_iuh(r=r, area_time_histogram=area_histogram)
+            excess_precip = self._apply_precipitation_loss(initial_loss=initial_loss, constant_loss_rate=constant_loss_rate)
+            simulated_flow = self._convolve_uh_with_precipitation(excess_precip=excess_precip, unit_hydrograph=unit_hydrograph)
 
-if __name__ == '__main__':
-    main()
+            # Align the final hydrograph to the length of the observed data
+            observed_flow = self.df['quickflow'].values
+            if len(simulated_flow) > len(observed_flow):
+                simulated_flow = simulated_flow[:len(observed_flow)]
+            elif len(simulated_flow) < len(observed_flow):
+                simulated_flow = np.pad(simulated_flow, (0, len(observed_flow) - len(simulated_flow)), 'constant')
+
+            return simulated_flow, excess_precip

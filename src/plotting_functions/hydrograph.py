@@ -193,10 +193,11 @@ def hydrograph2(df, streamflow_col, time_col, streamflow2_col=None, precip_col=N
             bar_width = 0.01
 
         # Determine the maximum precipitation for y-limits
+        max_precip = np.nanmax(precip)
         if precip2 is not None:
             max_precip = max(max_precip, np.nanmax(precip2))
-        else:
-            max_precip = np.nanmax(precip)
+
+            
 
         # Plot precipitation bars
         ax2.bar(
@@ -217,7 +218,7 @@ def hydrograph2(df, streamflow_col, time_col, streamflow2_col=None, precip_col=N
                 color="lightcoral",
                 edgecolor="darkred",
                 linewidth=0.5,
-                alpha=0.6,
+                alpha=0.8,
                 align="center"
             )
 
