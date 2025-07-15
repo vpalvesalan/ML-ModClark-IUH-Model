@@ -7,11 +7,13 @@ import geopandas as gpd
 import rasterio
 import rasterio.warp
 from shapely import wkt
-from tqdm import tqdm
 from pysheds.grid import Grid
 import sys
+import gc
+import os
 
 # Custom ModulesPath.cwd().parent.parent
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 project_root_path = Path.cwd().parent.parent
 sys.path.append(str(project_root_path / 'src'))
 
@@ -22,12 +24,14 @@ from plotting_functions.hydrograph import *
 # Load events metadata
 events_metadata_utc_path = project_root_path / 'data/gold/tabular/detected_storm_events.parquet'
 storm_events_utc_metadata = pd.read_parquet(events_metadata_utc_path)
+storm_events_utc_metadata['ws_id'] = storm_events_utc_metadata['storm_id'].str.split('_').str[0]
 filtered_storm_events_utc_metada = storm_events_utc_metadata[(storm_events_utc_metadata['response_min'] <= 30) & 
                                              (storm_events_utc_metadata['total_ppt_after_peak_mm'] == 0)]
 filtered_storm_events_utc_metada = filtered_storm_events_utc_metada.groupby('ws_id').filter(lambda x: len(x) >= 5)
 
 events_metadata_tz_offset_path = project_root_path / 'data/gold/tabular/detected_storm_events_tz_offset.parquet'
 storm_events_tz_offset_metadata = pd.read_parquet(events_metadata_tz_offset_path)
+storm_events_tz_offset_metadata['ws_id'] = storm_events_tz_offset_metadata['storm_id'].str.split('_').str[0]
 filtered_storm_events_tz_offset_metada = storm_events_tz_offset_metadata[(storm_events_tz_offset_metadata['response_min'] <= 30) & 
                                              (storm_events_tz_offset_metadata['total_ppt_after_peak_mm'] == 0)]
 filtered_storm_events_tz_offset_metada = filtered_storm_events_tz_offset_metada.groupby('ws_id').filter(lambda x: len(x) >= 5)
@@ -300,7 +304,7 @@ def compare_params_optimization(
     ws_ids = storm_events_utc['ws_id'].unique()
 
     # --- Main Loop: Process each watershed ---
-    for ws_id in tqdm(ws_ids, desc="Processing watersheds"):
+    for ws_id in ws_ids:
         if display:
             print(f"--- Processing Watershed: {ws_id} ---")
         
@@ -352,6 +356,7 @@ def compare_params_optimization(
             optimized_params = model.run_optimization(display=False)
             nse_tz_offset_scores[ws_id].append(optimized_params['nse'])
 
+        gc.collect()  # Collect garbage to free memory after each watershed
     return nse_utc_scores, nse_tz_offset_scores
 
 # --- Example Usage ---
@@ -368,7 +373,7 @@ if __name__ == '__main__':
             project_root=PROJECT_ROOT,
             n_ws=30, # Number of watersheds to test
             n_ev=10,  # Number of events per watershed, 
-            display=False
+            display=True
         )
 
         # --- Post-processing and Statistics ---
