@@ -1,6 +1,8 @@
+from ast import Tuple
 import pandas as pd
 import numpy as np
 from scipy.optimize import differential_evolution
+from typing import Tuple
 
 class ModClarkModel:
     """
@@ -212,31 +214,52 @@ class ModClarkModel:
         nse = 1 - (numerator / denominator)
         return 1 - nse
 
-    def run_optimization(self, basin_length_m: float = None, slope_10_85: float = None, display: bool = True) -> dict:
-        """
-        Runs the Differential Evolution optimization to calibrate model parameters.
+    def run_optimization(self, geo_char: Tuple[float, float] = None, dynamic_ppt_loss_bounds: float = False, display: bool = True) -> dict:
+        """Runs a Differential Evolution optimization to calibrate hydrologic model parameters.
 
-        This method can dynamically set the search bounds for Tc and R if watershed
-        characteristics are provided.
+        This method calibrates four key parameters: Time of Concentration ($T_c$), 
+        Storage Coefficient ($R$), initial precipitation loss, and constant 
+        precipitation loss rate.
+
+        The search bounds for $T_c$ and $R$ can be dynamically set based on watershed
+        geomorphological characteristics using the Kirpich formula. Otherwise, fixed 
+        default bounds are used. The bounds for precipitation loss can also be 
+        dynamically estimated from the input storm data.
 
         Args:
-            basin_length_m (float, optional): The length of the main channel of the basin in meters.
-            slope_10_85 (float, optional): The average channel slope as a decimal (e.g., 0.02 for 2%).
-            display (bool, optional): If True, prints progress and results to the console. Defaults to True.
+            geo_char (Tuple[float, float], optional): A tuple containing the 
+                watershed's `(basin_length_m, slope_10_85)`. `basin_length_m` is the 
+                main channel length in meters, and `slope_10_85` is the average 
+                channel slope as a decimal (e.g., 0.02). If provided, these are 
+                used to dynamically calculate $T_c$ and $R$ bounds. Defaults to `None`.
+            dynamic_ppt_loss_bounds (bool, optional): If `True`, dynamically calculates 
+                the bounds for initial precipitation loss based on the timing of 
+                rainfall and quickflow onset. If `False`, uses a wider default 
+                range. Defaults to `False`.
+            display (bool, optional): If `True`, prints optimization progress and 
+                final results to the console. Defaults to `True`.
 
         Returns:
-            dict: A dictionary containing the optimization results.
+            dict: A dictionary containing the calibrated parameters and model performance:
+                - `tc_hr`: Optimized Time of Concentration ($T_c$) in hours.
+                - `r_hr`: Optimized Storage Coefficient ($R$) in hours.
+                - `initial_loss_mm`: Optimized initial loss in millimeters.
+                - `constant_loss_mm_hr`: Optimized constant loss rate in mm/hour.
+                - `nse`: The Nash-Sutcliffe Efficiency (NSE) of the calibrated model.
         """
         if display:
             print("--- 🚀 Starting Optimization ---")
 
+        if geo_char is not None:
+            basin_length_m, slope_10_85 = geo_char
+
         # --- Set parameter search bounds ---
-        if basin_length_m is not None and slope_10_85 is not None:
+        if geo_char is not None:
             # Dynamically set bounds using Kirpich formula and rules of thumb
             if display:
                 print("Using dynamic bounds based on watershed characteristics.")
 
-            # Kirpich formula gives Tc in hours
+            # Kirpich formula (Tc in hours)
             tc_kirpich_hr = 0.000323 * (basin_length_m ** 0.77) * (slope_10_85 ** -0.385)
 
             # Tc bounds in seconds
@@ -246,7 +269,7 @@ class ModClarkModel:
 
             # R bounds in seconds, derived from Tc bounds
             r_min_sec = 1.0 * tc_min_sec
-            r_max_sec = 3.0 * tc_max_sec
+            r_max_sec = 5.0 * tc_max_sec
             r_bounds = (r_min_sec, r_max_sec)
             
             bounds = [
@@ -258,25 +281,28 @@ class ModClarkModel:
             if display:
                 print("Using fixed, default search bounds.")
             bounds = [
-                (3600, 10 * 3600),      # Tc (1-10 hours)
-                (3600, 20 * 3600),      # R (1-20 hours)
+                (900, 10 * 3600), # Tc (0.25-10 hours)
+                (900, 20 * 3600)  # R (0.25-20 hours)
             ]
 
-        # Initial loss bounds in meters
+        # Initial ppt loss bounds in meters
         total_ppt = self.df['height'].sum()
-        ppt_start_iloc = (self.df['height'] > 0).idxmax()
+        if dynamic_ppt_loss_bounds:
+            ppt_start_iloc = (self.df['height'] > 0).idxmax()
 
-        if (self.df['quickflow'] > 0).any():
-            quickflow_start_iloc = (self.df['quickflow'] > 0).idxmax()
+            if (self.df['quickflow'] > 0).any():
+                quickflow_start_iloc = (self.df['quickflow'] > 0).idxmax()
+            else:
+                quickflow_start_iloc = self.df.index[-1]
+            min_initial_loss = self.df.loc[ppt_start_iloc:quickflow_start_iloc, 'height'].sum()
+            max_initial_loss = min_initial_loss * 2 if min_initial_loss > 0 else self.df['height'].sum() * 0.1
+            max_initial_loss = min(max_initial_loss, total_ppt * 0.75)
+            initial_loss_bounds = (min_initial_loss, max_initial_loss)
         else:
-            quickflow_start_iloc = self.df.index[-1]
-        min_initial_loss = self.df.loc[ppt_start_iloc:quickflow_start_iloc, 'height'].sum()
-        max_initial_loss = min_initial_loss * 2 if min_initial_loss > 0 else self.df['height'].sum() * 0.1
-        max_initial_loss = min(max_initial_loss, total_ppt * 0.75)
-        initial_loss_bounds = (min_initial_loss, max_initial_loss)
-        initial_loss_bounds = (0, total_ppt)
+            max_initial_loss = 0
+            initial_loss_bounds = (0, total_ppt)
 
-        # Constant loss rate bounds in meters per second
+        # Constant ppt loss rate bounds in meters per second
         ppt_time_steps = np.sum(self.df['height']>0)
         if ppt_time_steps < 0:
             raise ValueError("Total precipitation in the storm event should be greater than 0.")
@@ -306,10 +332,10 @@ class ModClarkModel:
         final_nse = result.fun
 
         results_dict = {
-            "optimized_tc_hr": optimized_params[0] / 3600,
-            "optimized_r_hr": optimized_params[1] / 3600,
-            "optimized_initial_loss_mm": optimized_params[2]*1000,
-            "optimized_constant_loss_mm_hr": optimized_params[3] * 1000 * 3600,
+            "tc_hr": optimized_params[0] / 3600,
+            "r_hr": optimized_params[1] / 3600,
+            "initial_loss_mm": optimized_params[2]*1000,
+            "constant_loss_mm_hr": optimized_params[3] * 1000 * 3600,
             "nse": 1-final_nse
         }
         
