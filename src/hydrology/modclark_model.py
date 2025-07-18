@@ -4,6 +4,8 @@ import numpy as np
 from scipy.optimize import differential_evolution
 from typing import Tuple
 
+from shapely import area
+
 class ModClarkModel:
     """
     A class to represent and calibrate a ModClark hydrological model for a single storm event.
@@ -108,7 +110,7 @@ class ModClarkModel:
         cumulative_volume = 0.0
         for i in range(1, len(unit_hydrograph)):
             volume_step = (unit_hydrograph[i] + unit_hydrograph[i-1]) / 2 * self.delta_t
-            if cumulative_volume + volume_step > 0.995:
+            if cumulative_volume + volume_step > 0.999:
                 unit_hydrograph = unit_hydrograph[:i+1]
                 break
             cumulative_volume += volume_step
@@ -171,7 +173,7 @@ class ModClarkModel:
         Returns:
             np.ndarray: A 1D NumPy array of the simulated volumetric discharge [m³/s].
         """
-        simulated_hydrograph_depth_rate = np.convolve(excess_precip, unit_hydrograph)* self.delta_t
+        simulated_hydrograph_depth_rate = np.convolve(excess_precip, unit_hydrograph)
         return simulated_hydrograph_depth_rate * self.total_area
 
     def _nse_objective_function(self, params: list) -> float:
@@ -214,7 +216,7 @@ class ModClarkModel:
         nse = 1 - (numerator / denominator)
         return 1 - nse
 
-    def run_optimization(self, geo_char: Tuple[float, float] = None, dynamic_ppt_loss_bounds: float = False, display: bool = True) -> dict:
+    def run_optimization(self, tc_bounds = (900, 10*3600), r_bounds= (900, 20*3600), geo_char: Tuple[float, float] = None, dynamic_ppt_loss_bounds: float = False, workers=1, display: bool = True) -> dict:
         """Runs a Differential Evolution optimization to calibrate hydrologic model parameters.
 
         This method calibrates four key parameters: Time of Concentration ($T_c$), 
@@ -227,6 +229,10 @@ class ModClarkModel:
         dynamically estimated from the input storm data.
 
         Args:
+            tc_bounds (Tuple[float, float], optional): The bounds for the Time of Concentration ($T_c$) in seconds.
+                Defaults to `(900, 10*3600)` which corresponds to 15 minutes to 10 hours.
+            r_bounds (Tuple[float, float], optional): The bounds for the Storage Coefficient ($R$) in seconds.
+                Defaults to `(900, 20*3600)` which corresponds to 15 minutes to 20 hours.
             geo_char (Tuple[float, float], optional): A tuple containing the 
                 watershed's `(basin_length_m, slope_10_85)`. `basin_length_m` is the 
                 main channel length in meters, and `slope_10_85` is the average 
@@ -238,6 +244,8 @@ class ModClarkModel:
                 range. Defaults to `False`.
             display (bool, optional): If `True`, prints optimization progress and 
                 final results to the console. Defaults to `True`.
+            workers (int, optional): The number of parallel workers to use for the
+                optimization. Defaults to `1`, meaning no parallelization.
 
         Returns:
             dict: A dictionary containing the calibrated parameters and model performance:
@@ -271,19 +279,15 @@ class ModClarkModel:
             r_min_sec = 1.0 * tc_min_sec
             r_max_sec = 5.0 * tc_max_sec
             r_bounds = (r_min_sec, r_max_sec)
-            
-            bounds = [
-                tc_bounds,
-                r_bounds
-            ]
+        
         else:
             # Use fixed, default bounds if no characteristics are provided
             if display:
                 print("Using fixed, default search bounds.")
-            bounds = [
-                (900, 10 * 3600), # Tc (0.25-10 hours)
-                (900, 20 * 3600)  # R (0.25-20 hours)
-            ]
+        bounds = [
+            tc_bounds,
+            r_bounds
+        ]
 
         # Initial ppt loss bounds in meters
         total_ppt = self.df['height'].sum()
@@ -297,6 +301,10 @@ class ModClarkModel:
             min_initial_loss = self.df.loc[ppt_start_iloc:quickflow_start_iloc, 'height'].sum()
             max_initial_loss = min_initial_loss * 2 if min_initial_loss > 0 else self.df['height'].sum() * 0.1
             max_initial_loss = min(max_initial_loss, total_ppt * 0.75)
+
+            if max_initial_loss < min_initial_loss:
+                min_initial_loss = total_ppt * 0.01
+                max_initial_loss = total_ppt * 0.99
             initial_loss_bounds = (min_initial_loss, max_initial_loss)
         else:
             max_initial_loss = 0
@@ -321,6 +329,7 @@ class ModClarkModel:
             tol=0.01,
             mutation=(0.5, 1),
             recombination=0.7,
+            workers=workers,
             disp=display # Control console output
         )
 
@@ -359,7 +368,11 @@ class ModClarkModel:
                 constant_loss_rate (float): The constant loss rate in m/s.
 
             Returns:
-                np.ndarray: The final simulated hydrograph in m³/s.
+                Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]: A tuple containing:
+                    - simulated_flow (np.ndarray): The simulated hydrograph [m³/s].
+                    - excess_precip (np.ndarray): The excess precipitation hyetograph [m].
+                    - unit_hydrograph (np.ndarray): The unit hydrograph ordinates [T⁻¹].
+                    - area_histogram (np.ndarray): The time-area histogram [m²].
             """
             # Run the full simulation sequence with the provided parameters
             area_histogram = self._compute_time_area_histogram(tc=tc)
@@ -374,4 +387,4 @@ class ModClarkModel:
             elif len(simulated_flow) < len(observed_flow):
                 simulated_flow = np.pad(simulated_flow, (0, len(observed_flow) - len(simulated_flow)), 'constant')
 
-            return simulated_flow, excess_precip
+            return simulated_flow, excess_precip, unit_hydrograph, area_histogram

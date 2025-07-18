@@ -1,11 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import dates as mdates
-import numpy as np
 
 def hydrograph1(df, streamflow_col, time_col, streamflow2_col=None, precip_col=None, 
                P_units="", S_units="", S1_col="#D62728", S2_col="#1F77B4", 
-               stream_label="Streamflow", precip2_col=None):
+               stream_label="Streamflow", precip2_col=None, title = None):
     """
     Generate hydrograph and hyetograph plot.
 
@@ -145,18 +144,18 @@ def hydrograph1(df, streamflow_col, time_col, streamflow2_col=None, precip_col=N
     # Legend for streamflow lines
     ax1.legend(loc="upper left", frameon=True, fontsize=10)
 
+    # Add title if provided
+    if title is not None:
+        fig.suptitle(title, fontsize=14, y=0.95)
+
     # Tight layout to prevent clipping
     plt.tight_layout()
     plt.show()
 
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-import numpy as np
-import pandas as pd
 
 def hydrograph2(df, streamflow_col, time_col, streamflow2_col=None, precip_col=None, 
                 P_units="", S_units="", S1_col="#D62728", S2_col="#1F77B4", 
-                stream_label="Streamflow", precip2_col=None, ppt_legend=False, title=None):
+                stream_label=["Runoff","Simulated Runoff"], precip2_col=None, ppt_legend=False, title=None):
     """
     Generate hydrograph and hyetograph plot with two subplots to prevent overlap.
 
@@ -204,7 +203,7 @@ def hydrograph2(df, streamflow_col, time_col, streamflow2_col=None, precip_col=N
             time_series,
             precip,
             width=bar_width,
-            color="skyblue",
+            color="lightcoral",
             edgecolor="navy",
             linewidth=0.5,
             alpha=0.8,
@@ -215,10 +214,10 @@ def hydrograph2(df, streamflow_col, time_col, streamflow2_col=None, precip_col=N
                 time_series,
                 precip2,
                 width=bar_width,
-                color="lightcoral",
+                color="skyblue",
                 edgecolor="darkred",
                 linewidth=0.5,
-                alpha=0.8,
+                alpha=1,
                 align="center"
             )
 
@@ -235,12 +234,12 @@ def hydrograph2(df, streamflow_col, time_col, streamflow2_col=None, precip_col=N
 
         if ppt_legend:
             # Add legend for precipitation
-            precip_label = f"Precipitation ({P_units})" if P_units else "Precipitation"
-            precip2_label = f"Precipitation 2 ({P_units})" if P_units else "Precipitation 2"
-            handles = [plt.Rectangle((0,0),1,1, facecolor="skyblue", edgecolor="navy", alpha=0.8)]
+            precip_label = f"Observed Precipitation ({P_units})" if P_units else "Observed Precipitation"
+            precip2_label = f"Excess Precipitation ({P_units})" if P_units else "Excess Precipitation"
+            handles = [plt.Rectangle((0,0),1,1, facecolor="lightcoral", edgecolor="navy", alpha=1)]
             labels = [precip_label]
             if precip2 is not None:
-                handles.append(plt.Rectangle((0,0),1,1, facecolor="lightcoral", edgecolor="darkred", alpha=0.6))
+                handles.append(plt.Rectangle((0,0),1,1, facecolor="skyblue", edgecolor="darkred", alpha=0.6))
                 labels.append(precip2_label)
             ax2.legend(handles, labels, loc="lower right", frameon=False, fontsize=10)
 
@@ -250,7 +249,7 @@ def hydrograph2(df, streamflow_col, time_col, streamflow2_col=None, precip_col=N
         streamflow,
         color=S1_col,
         linewidth=2,
-        label=stream_label
+        label=stream_label[0]
     )
     if streamflow2 is not None:
         ax1.plot(
@@ -259,7 +258,7 @@ def hydrograph2(df, streamflow_col, time_col, streamflow2_col=None, precip_col=N
             color=S2_col,
             linestyle="--",
             linewidth=2,
-            label=f"{stream_label} 2"
+            label=stream_label[1]
         )
 
     # Set y-limits for streamflow with padding
@@ -268,7 +267,7 @@ def hydrograph2(df, streamflow_col, time_col, streamflow2_col=None, precip_col=N
         all_streams.append(streamflow2)
     max_stream = np.nanmax(np.concatenate(all_streams))
     ax1.set_ylim(0, max_stream)
-    ax1.set_ylabel(f"{stream_label} ({S_units})" if S_units else stream_label, fontsize=11)
+    ax1.set_ylabel(f"{"Streamflow"} ({S_units})" if S_units else "Streamflow", fontsize=11)
     ax1.tick_params(axis="y", labelsize=10)
     # Remove top spine
     ax1.spines['top'].set_visible(False)
