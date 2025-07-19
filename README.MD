@@ -23,8 +23,15 @@
 - Manually check delineated watershed: it would both provide more precise watershed boundaries and increase the number of watersheds suitable for modeling.
 - Clean low-quality tabular data
 - Further investigate dropped low quality data in attempt to improve their quality and keep them in the analysis increasing the number of data points.
+- Increase the number of events: optmize all events instead of dropping a lot before opitimization
+- Test more feature for landcover, instead of only percentage of deveeloped, also percentage of 'Forest'
+    'Agriculture': [81, 82],
+    'Grass/Scrub': [52, 71],
+    'Wetlands': [90, 95],
+    'Water': [11],
+    'Barren': [31]
 
-**Dropped watershed stations**
+**Dropped watershed**
 - Lack of historical data within the period of study XXXXXX
 - Low quality  watershed delineation
 - Lack of enough storm events suitable for modeling
