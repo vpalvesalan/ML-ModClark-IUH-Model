@@ -7,7 +7,7 @@ def _prepare_data(
     observed_flow_series: Optional[pd.Series] = None,
     simulated_flow_series: Optional[pd.Series] = None,
     observed_col: str = 'observed_flow',
-    simulated_col: str = 'simulated_flow'
+    simulated_col: str = 'simulated_quickflow'
 ) -> Tuple[pd.Series, pd.Series]:
     """
     Internal helper function to parse and validate input data.
@@ -143,7 +143,15 @@ def calculate_overall_metrics(
 
     # Convert the list of dictionaries to a DataFrame for easy averaging
     metrics_df = pd.DataFrame(event_metrics_list)
-
+    if metrics_df.empty:
+        return {}
+    keep_columns = [
+        'nse', 'mape_peak_flow', 'bias_peak_flow',
+        'mae_time_to_peak', 'bias_time_to_peak',
+        'mape_volume', 'bias_volume'
+    ]
+    metrics_df = metrics_df[keep_columns]
+    
     # Calculate the mean of each column (metric), ignoring NaNs
     averaged_metrics = metrics_df.mean().to_dict()
 

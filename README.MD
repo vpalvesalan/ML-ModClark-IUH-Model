@@ -1,5 +1,17 @@
 # ML ModClark IUH Parameter Estimation
 
+## Summary
+
+Regionalization of hydrologic model parameters for ungauged basins is a persistent challenge in water resources management. This study presents a comprehensive investigation into the feasibility of using machine learning to predict the ModClark rainfall-runoff model parameters—Time of Concentration ($T_c$) and Storage Coefficient ($R$)—from static geomorphological and land use characteristics for watersheds across the **Ohio River Basin region**. As a key contribution, this research developed and implemented a reproducible workflow for automated watershed delineation, derivation of geomorphological characteristics, and application of the ModClark hydrologic model. The workflow was initiated with the curation of 1,055 potential stream gauge locations. Due to rigorous data quality standard on the preprocess phase, it culminated in a final dataset of 529 watershed to be calibrated using 20.000 storm events, resulting in 112 unique watersheds suitable for machine learning models. A critical finding from this calibration phase was that the ModClark model's performance degraded significantly for events with peak flows exceeding 2 m³/s, suggesting the calibrated parameters are most reliable for small to moderate storm events.
+
+A suite of machine learning models, including Elastic Net and Random Forest, were trained on the resulting parameter dataset. The results revealed a stark contrast between the predictability of the two parameters. For the time of concentration ($T_c$), the regularized Elastic Net model demonstrated a modest but statistically significant predictive capability, achieving an R-squared of approximately 0.35. In stark contrast, the primary conclusion of this study is that the storage coefficient ($R$) cannot be reliably predicted from static watershed features alone. All tested model architectures failed to establish a meaningful, generalizable relationship, with the best models yielding R-squared values near zero.
+
+The ultimate test, a final hydrologic validation using the best-performing ML models to simulate 339 storm events, confirmed these findings. The simulations resulted in an unacceptably low average Nash-Sutcliffe Efficiency (NSE), indicating a failure to produce reliable hydrographs. A diagnostic analysis definitively isolated the inability to predict $R$ as the primary driver of this failure. The results strongly suggest that the storage coefficient is dominated by dynamic, event-specific variables, such as antecedent moisture and storm intensity, which were not included in the static feature set.
+
+This research quantifies the significant challenges in regionalizing event-based model parameters and highlights several opportunities for future improvement. The robustness of the underlying dataset could be enhanced through the use of a finer resolution DEM (e.g., 10m) and manual validation of the automated watershed delineations. Methodologically, further investigation could explore alternative conceptual models, such as the Snyder Unit Hydrograph, or constrain the application of the ModClark model to smaller watersheds where it performed more reliably. Finally, more complex algorithms, such as neural networks that directly model runoff from both static and dynamic features, could be assessed. These refinements, coupled with the incorporation of dynamic variables, represent a clear path forward in the pursuit of a truly predictive model for ungauged basins.
+
+![](/figures/study_area.png)
+---
 **Notebooks**: For reproducibility purposes, the notebooks of this project must be viewed in the following order:
 1. [Study area](notebooks/preprocessing/1_study_area.ipynb)
 2. [DEM tiles downlaod](notebooks/data_donwload/2_DEM_download.ipynb)
@@ -18,33 +30,11 @@
 15. [Explortaroy data analysis on features](notebooks/ML_model/15_exploratory_data_analysis.ipynb)
 16. [Machine learning model and evaluation](notebooks/ML_model/16_ML_modeling_and_evaluation.ipynb)
 
-**Improvement Oportunities**:
-- Finer DEM resolution: 10m resolution would provide more precise watershed boundaries and geomorphological characteristics.
-- Manually check delineated watershed: it would both provide more precise watershed boundaries and increase the number of watersheds suitable for modeling.
-- Clean low-quality tabular data
-- Further investigate dropped low quality data in attempt to improve their quality and keep them in the analysis increasing the number of data points.
-- Increase the number of events: optmize all events instead of dropping a lot before opitimization
-- Test more feature for landcover, instead of only percentage of deveeloped, also percentage of 'Forest'
-    'Agriculture': [81, 82],
-    'Grass/Scrub': [52, 71],
-    'Wetlands': [90, 95],
-    'Water': [11],
-    'Barren': [31]
-
-**Dropped watershed**
-- Lack of historical data within the period of study XXXXXX
-- Low quality  watershed delineation
-- Lack of enough storm events suitable for modeling
-
-
-
-
-
 ## Problem Statement
 
 Accurately estimating the parameters of the ModClark Instantaneous Unit Hydrograph (IUH) is crucial for effective hydrological modeling, impacting vital applications such as flood forecasting, water resource management, dam safety, and predicting streamflow responses to future land cover changes. Traditional methods for determining these parameters often rely heavily on historical observed rainfall-runoff data within a specific basin. This dependency poses significant challenges, particularly in ungauged basins where such data is scarce or entirely unavailable. Furthermore, even in gauged basins, the calibration processes can be time-consuming and may not always yield optimal parameter sets that generalize well to different future conditions.
 
-This project addresses these limitations by leveraging machine learning techniques to develop a model capable of estimating the ModClark IUH parameters (time of concentration and storage coefficient) based on readily available physiographic characteristics and storm events of a watershed. By establishing the relationship between these basin characteristics and the IUH parameters, the developed model aims to provide a more objective, efficient, and potentially more accurate approach to parameter estimation, especially in data-scarce regions. This work has the potential to significantly enhance the applicability and reliability of hydrological models across a wider range of scenarios and locations, particularly within the [**DEFINE STUDY REGION**], the intended study region for application and validation with hydrology practitioners.
+This project addresses these limitations by leveraging machine learning techniques to develop a model capable of estimating the ModClark IUH parameters (time of concentration and storage coefficient) based on readily available physiographic characteristics and storm events of a watershed. By establishing the relationship between these basin characteristics and the IUH parameters, the developed model aims to provide a more objective, efficient, and potentially more accurate approach to parameter estimation, especially in data-scarce regions. This work is expected to significantly enhance the applicability and reliability of hydrological models across a wider range of scenarios and locations, particularly within the **Ohio Hydrological Region**, the intended study region for application and validation with hydrology practitioners.
 
 ## Instantaneous Unit Hydrograph (IUH) Concepts
 
@@ -224,7 +214,7 @@ By following this procedure, IUH can be computed and streamflow hydrographs simu
                                                             
 ### Preprocessing
 
-Common steps to preprocess the raw data are taken: time zone conversion to UTC, ~~fill in of gaps (based on the average)~~, coordinate reference system conversion and projection of geodata and filter data to the area of study and measurement unit conversions. After basic preprocessing, the following steps are taken to prepare the data:
+Common steps to preprocess the raw data are taken: time zone conversion to UTC, coordinate reference system conversion and projection of geodata and filter data to the area of study and measurement unit conversions and other common geopreprocessing technics for raster and vector data. After basic preprocessing, the following steps are taken to prepare the data:
 
 #### Geomorphological Characteristics
 
@@ -296,7 +286,7 @@ Regulated watersheds (those containing dams, according to the National Inventory
 
 #### Storm Event Selection
 
-All storm events within a 10-year period of data will be considered for parameter optimization. A storm event is defined as a period of recorded rainfall depth at the gauging station that produces any amount of runoff. A storm event is considered to have ended if there are three consecutive time steps with zero flow recorded at the gauging station. To minimize the influence of snowmelt, events occurring in January and February will be filtered out. The following metadata and characteristics are recorded for each storm event (15-min resolution) and be used to assess $T_c$ and $R$ outliers after optmization: 
+All storm events from 2015 to 2023 will be considered for parameter optimization. A storm event is defined as a period of recorded rainfall depth at the gauging station that produces any amount of runoff. A storm event is considered to have ended if there are three consecutive time steps with zero flow recorded at the gauging station. To minimize the influence of snowmelt, events occurring in January and February will be filtered out. The following metadata and characteristics are recorded for each storm event (15-min resolution) and be used to assess $T_c$ and $R$ outliers after optmization: 
 
    * Total precipitation in the 14, 7, and 3 days prior to the storm start.
    * Total precipitation in the 24, 6, and 3 hours prior to the storm start.
@@ -629,6 +619,185 @@ These datasets were acquired and processed to provide the necessary inputs for d
 
 The use of publicly available datasets from authoritative sources enhances the reproducibility of this research. The integration of these diverse data types provides the foundation for characterizing the study watersheds and supports the development and evaluation of machine learning models for hydrological parameter estimation.
 
+## RESULTS
+
+This section presents the key findings derived from the comprehensive data preprocessing, hydrological model optimization, and machine learning model training phases of this study. The results are structured to systematically detail the outcomes at each stage of the methodology, providing insights into the prepared datasets, the calibrated ModClark parameters, and the performance of the developed machine learning models in estimating these parameters from geomorphological characteristics.
+
+The findings are organized into the following subsections:
+
+1.  **Preprocessing:** This subsection details the outcomes of the various data preprocessing steps, including the characteristics of the delineated watersheds, the results of DEM conditioning, and the baseflow separation process.
+2.  **ModClark $T_c$ and $R$ Parameters Optimization:** This section presents the calibrated values of the Time of Concentration ($T_c$) and Storage Coefficient ($R$) for each gauged watershed, alongside an assessment of the ModClark model's performance in simulating observed hydrographs using these optimized parameters.
+3.  **Machine Learning Model Performance:** This subsection provides a detailed evaluation of the trained machine learning algorithms (Multiple Linear Regression, Random Forests, Support Vector Machines, and Elastic Net Regression) in predicting $T_c$ and $R$ from geomorphological features, including direct parameter evaluation metrics and their subsequent impact on hydrograph simulation accuracy.
+
+### 1. Geospatial Preprocessing and Watershed Delineation
+
+This section details the results of the geospatial preprocessing workflow, which involved curating stream gauge locations, delineating watershed boundaries from a Digital Elevation Model (DEM), and processing land cover data. The objective was to generate a consistent and reliable set of spatial features for each catchment in the study.
+
+
+#### 1.1 Stream Gauge Curation and Pour Point Definition
+
+The basis for watershed delineation was a set of 1,055 streamflow gauging stations. A temporal filter was first applied to retain only those stations with available streamflow records within the study period (2015-2023). This initial curation reduced the candidate set to **706 stations**, which served as the initial pour points for delineation.
+
+#### 1.2 Watershed Delineation and Pour Point Snapping
+
+Preliminary delineations using the raw station coordinates revealed significant spatial inconsistencies, a common issue attributable to inaccuracies in recorded gauge locations relative to the DEM-derived river network. To address this, a robust, iterative pour point snapping methodology was developed and implemented. The primary objectives were twofold:
+1.  Delineate watersheds with a hydrologically significant contributing area of at least **1.8 km²**.
+2.  Maintain spatial fidelity by enforcing a maximum snapping distance of **500 meters** between the original gauge location and the final, DEM-aligned pour point.
+
+The procedure iteratively tested a series of flow accumulation thresholds (ranging from 50 to 8,000 cells) for each of the 706 stations, selecting the optimal snapped location that satisfied both the minimum area and maximum distance criteria.
+
+A total of 140 stations failed to produce a valid watershed that met these dual criteria, often due to a lack of sufficient flow accumulation near the gauge location in the DEM. These stations were subsequently excluded from the analysis. The remaining watersheds were carried forward for further analysis. A summary of the snapping distances and resulting watershed areas for the successfully delineated catchments is presented below.
+
+| Distance Category | Watershed Count |
+| :--- | :--- |
+| 0-20m | 214 |
+| 21-100m | 174 |
+| 101-500m | 141 |
+| *Total <= 500m* | *529* |
+| 501-1000m | 36 |
+| >1000m | 125 |
+
+| Area Category | Watershed Count |
+| :--- | :--- |
+| <1.8 km² | 248 |
+| 1.8-5 km² | 132 |
+| 5.1-10 km² | 64 |
+| 10.1-20 km² | 53 |
+| 20.1-50 km² | 72 |
+| >80 km² | 121 |
+
+Based on a strict adherence to the 500-meter maximum distance criterion, a final set of **529** watersheds was selected for the subsequent analysis stages. It is noted that this final set includes 87 catchments with areas smaller than the 1.8 km² target; these were retained as they represented valid delineations where the snapping distance constraint was prioritized. The influence of these smaller catchments will be monitored throughout the modeling process.
+
+**Figure: Watershed Delineation for Station ID 03165000 for Different Accumulation Cell Values**
+![**Watershed Delineation for Station ID 03165000 for Different Accumulation Cell Values**](/figures/different_acc_cell_values.png)
+
+#### 1.3 Land Cover Data Processing
+
+Concurrently, land cover data from the Multi-Resolution Land Characteristics (MRLC) dataset was processed for each of the 529 valid watersheds. The standard preprocessing workflow included clipping the MRLC raster to each watershed boundary, reprojecting to a consistent Coordinate Reference System (CRS), resampling to match the DEM resolution using a nearest-neighbor method, and masking to ensure perfect spatial congruence with the delineated catchments.
+
+![](/figures/lc_use_map_example.png)
+
+![](/figures/geomorphological_char_figure_example.png)
+
+---
+### 2. Storm Event Selection and ModClark Parameter Optimization
+
+This section details the results of the data curation and parameter optimization process. The primary objectives were to select a high-quality subset of storm events from the available data, determine the optimal configuration for the optimization algorithm, and generate a robust set of calibrated Time of Concentration ($T_c$) and Storage Coefficient ($R$) parameters for subsequent machine learning model development.
+
+
+#### 2.1 Preliminary Analysis and Data Curation
+
+#### Data Time Standard Investigation
+An initial ambiguity in the precipitation data's time standard (UTC vs. local time) necessitated a comparative analysis. A subset of events was optimized using both datasets. The analysis revealed that the local time-adjusted precipitation data yielded superior model fits, with a higher overall average Nash-Sutcliffe Efficiency (NSE) and a greater percentage of watersheds achieving positive NSE scores (8% vs. 4%). Consequently, the **local time-adjusted dataset was adopted** for all subsequent analyses.
+
+#### Storm Event Filtering Criteria
+The initial dataset comprised 81,672 storm events across 461 watersheds. To ensure the quality and suitability of events for single-event hydrologic modeling, a set of rigorous filtering criteria was applied:
+1.  **No precipitation after peak flow:** To isolate clear, single-peaked hydrograph responses.
+2.  **Hydrologic response time ≤ 30 minutes:** To exclude events with significant data misalignment or complex rainfall-runoff processes not captured by the available data.
+3.  **Minimum of 5 valid events per watershed:** To ensure a sufficient sample size for subsequent statistical analysis.
+
+Application of these criteria resulted in a curated dataset of **20,201 suitable storm events for further analysis across 412 watersheds**.
+
+#### 2.2 Optimization Strategy Refinement
+
+An initial optimization analysis on a sample of events revealed that the calibrated parameters were frequently converging on the predefined boundaries of the search space. This indicated that the optimization algorithm was constrained and could potentially find better solutions with more freedom. This diagnostic led to a refinement of the optimization strategy itself.
+
+Based on the boundary analysis, the parameter search space was adjusted to better reflect the physical characteristics observed:
+* The **upper bound for $T_c$ was increased from 10 to 20 hours** to accommodate slower-responding watersheds.
+* The **lower bound for $R$ was decreased from 0.25 to 0.1 hours** to better capture the behavior of "flashy," rapid-response catchments.
+* The `popsize` hyperparameter of the differential evolution algorithm was increased from 15 to 50, expanding the search population to enhance exploration of the parameter space and reduce the risk of converging on local minima.
+
+#### 2.3 Results of the Final Optimization
+
+The refined optimization strategy was applied to all 20,201 curated storm events.
+
+#### Overall Performance Distribution
+The final calibrated parameters yielded a wide range of model performance. A significant portion, **39.1% (7,861 events)**, achieved an acceptable fit with an NSE greater than zero. Of these, over 5,000 events were classified as "Good" (NSE > 0.5) or "Very Good" (NSE > 0.75), providing a strong foundation for the machine learning dataset. However, 60.9% of events still resulted in an unacceptable fit, prompting an investigation into the drivers of poor performance.
+
+#### Drivers of Poor Performance
+A diagnostic analysis was conducted to identify characteristics associated with low NSE scores. Two factors emerged as statistically significant drivers of model failure:
+1.  **Peak Quickflow:** A logistic regression and binned analysis revealed a strong positive correlation between peak flow magnitude and the likelihood of an unacceptable NSE. The model failure rate increases sharply for events with a `peak_quickflow` greater than **approximately 2 m³/s**, suggesting that the linear reservoir routing assumption of the ModClark model may be inadequate for high-flow events.
+2.  **Pour Point Snapping Distance:** The spatial accuracy of the watershed outlet was found to be critical. An independent t-test confirmed a statistically significant difference (p-value ≈ 0) between the mean snapping distance for acceptable fits (54m) and unacceptable fits (109m). The failure rate rises considerably for distances greater than 100m, underscoring the sensitivity of hydrologic models to accurate geospatial inputs.
+
+![](/figures/optmized_hydropgrah_example.png)
+
+#### 2.4 Final Dataset Assembly for Machine Learning
+
+To construct the final dataset for the machine learning phase, a final filtering and quality control process was implemented.
+
+* **Performance and Outlier Filtering:** First, only events that achieved a "Good" or "Very Good" fit (**NSE ≥ 0.5**) were retained, resulting in 5,056 high-quality parameter sets. Subsequently, an IQR-based outlier removal process was applied to the $T_c$ and $R$ values for each watershed, which further refined the dataset by removing 710 anomalous parameter sets.
+
+* **Coefficient of Variance Filtering:** To avoid watershed with high variance of optmized $T_c$ and $R$ parameters, a threshold for the coefficient of variance was determined. Watershed with CV above this threshold was dropped from Machine Learning Model. During the aggregation of these parameter sets, a key hydrologic consideration was made: the storage coefficient ($R$) is assumed to be more dynamic and event-dependent than the time of concentration ($T_c$), which is primarily controlled by static geomorphology. To account for this, a more lenient Coefficient of Variation (CV) threshold was used for $R$ (0.8) compared to $T_c$ (0.5) when filtering the aggregated data, ensuring that the natural variability of $R$ was not improperly penalized.
+
+* **Final Watershed and Event Counts:** After filtering for watersheds with at least three high-quality events, the final dataset for machine learning consisted of **4,248 storm events from 183 unique watersheds**.
+
+
+### 3. Machine Learning Modeling Results
+
+This section details the development, evaluation, and comparative analysis of machine learning models for predicting the ModClark hydrologic parameters, $T_c$ and $R$. The modeling strategy was directly informed by the preceding Exploratory Data Analysis (EDA), which revealed a dataset characterized by wide variations in feature scales, prevalent right-skewness, and significant multicollinearity.
+
+![](/figures/correlation_matrix.png)
+---
+#### 3.1 Modeling Framework and Preprocessing
+
+To address the data characteristics identified in the EDA, a robust modeling framework was established. The target variables were log-transformed ($\log(T_c)$, $\log(R)$) to normalize their distributions and stabilize variance. Two distinct preprocessing pipelines were created: one for linear models (OLS, Elastic Net) incorporating feature transformations (Log/Box-Cox) and Z-score standardization, and a simpler pipeline with only Z-score standardization for non-linear models (SVR, Random Forest).
+
+![](/figures/eda_transformation_elongation_ratio.png)
+
+Model evaluation was conducted using a rigorous data splitting strategy. The 112 unique watersheds were first partitioned into a training/validation pool (89 watersheds) and a final hold-out test set (23 watersheds). Model selection and hyperparameter tuning were then performed on the training pool using Leave-One-Out Cross-Validation (LOOCV) to ensure the most robust performance estimate given the limited dataset size.
+
+---
+#### 3.2 Approach 1: Modeling with Hybrid Temporal-Aggregated Data
+
+The initial modeling approach utilized a hybrid dataset that aggregated parameters yearly for watersheds with significant land use change, and used a long-term average for others. This was done to test the hypothesis that temporal land use dynamics contain a valuable predictive signal.
+
+#### Statistical Performance
+The model selection process identified **Elastic Net** as the superior architecture for both targets. It is noteworthy that this regularized linear model outperformed more complex, non-linear models like SVR and Random Forests, suggesting that the more flexible models were likely overfitting the noisy relationships in the limited training data.
+* **For Target $T_c$:** The Elastic Net model demonstrated a modest but statistically significant predictive capability, achieving an **R-squared of 0.35** on the hold-out test set.
+* **For Target $R$:** All models struggled significantly. The best model, Elastic Net, yielded an **R-squared of only 0.06**, indicating no meaningful predictive power.
+
+![](/figures/observed_vs_predicted_elasticNet_tc.png)
+
+#### Hydrologic Validation
+The ultimate test involved using the predicted $T_c$ and $R$ to simulate 339 storm events. As a benchmark, the average NSE for individually calibrated events was **0.77** ("very good").
+* **Scenario 1 (Predicted $T_c$ + Predicted $R$):** The result was a **catastrophic model failure**, with an astronomically negative Average NSE, indicating complete model instability.
+* **Scenario 2 (Predicted $T_c$ + Original $R$):** A diagnostic test using the true optimized $R$ stabilized the simulation (Average NSE -5.9) and produced reasonable volume predictions (MAPE 20.3%). This definitively isolated the **inability to predict $R$ as the primary driver of the overall model failure**.
+
+#### 3.3 Approach 2: Modeling with Overall-Aggregated Data
+
+Based on the poor performance of the first approach, a second experiment was conducted to test the hypothesis that the yearly aggregation introduced more noise than signal. This was done by re-training the models on a simplified dataset where all watersheds were represented by a single, long-term average.
+
+#### Statistical Performance and Comparison
+The central hypothesis of this approach was **not supported by the results**.
+* **For Target $T_c$:** The Elastic Net model's performance **degraded significantly**, with the R-squared on the hold-out set dropping from 0.35 to **0.20**. This suggests that the temporal data, while noisy, was providing some valid predictive information that was lost upon full aggregation.
+* **For Target $R$:** The model performance remained **exceptionally poor**, with a final **negative R-squared of -0.057**.
+
+Simplifying the dataset did not yield a more robust model. The **hybrid dataset from Approach 1, despite its flaws, produced the superior performing model for $T_c$**.
+
+---
+#### 3.4 Final Conclusions
+
+1.  **Predicting $T_c$ is Challenging but Plausible:** Across both approaches, a modest but persistent statistical relationship was found between watershed characteristics and $T_c$. The Elastic Net model from the hybrid dataset (Approach 1) was the best, but its R² of 0.35 is insufficient for highly reliable hydrologic simulation. The persistence of some hydrologically inconsistent coefficients even in the best models highlights the limitations of a linear framework for this problem.
+
+2.  **Predicting $R$ is Not Feasible with This Approach:** The primary and most definitive conclusion of this entire study is that the storage coefficient, $R$, **cannot be reliably predicted from the static geomorphological and land use features available in this dataset**. No model architecture or data aggregation strategy was able to find a meaningful, generalizable relationship.
+
+The results strongly suggest that the storage coefficient is dominated by **dynamic, event-specific variables**—such as storm intensity, and duration—that are not captured by the static feature set. This work highlights a critical limitation of regionalization studies for storage parameters and underscores the paramount importance of event-specific conditions in process-based hydrologic modeling.
+
+## CONCLUSION
+
+This study undertook a comprehensive investigation into the feasibility of predicting ModClark hydrologic parameters—the Time of Concentration ($T_c$) and the Storage Coefficient ($R$)—for ungauged basins using machine learning models trained on static geomorphological and land use characteristics. Through a rigorous, multi-stage process of data curation, parameter optimization, and comparative model evaluation, this research has yielded several critical insights into the opportunities and fundamental limitations of such a regionalization approach.
+
+The primary conclusion of this work is that while a modest, statistically significant relationship can be established for the timing parameter ($T_c$), the storage parameter ($R$) cannot be reliably predicted from the static features available in this dataset. Consequently, the ultimate goal of accurately simulating full storm hydrographs for ungauged watersheds was not achieved.
+
+The investigation into predicting the two parameters revealed starkly different outcomes. For the Time of Concentration ($T_c$), the regularized Elastic Net model was able to capture a modest portion of its variance (R² ≈ 0.35), primarily driven by physically intuitive features related to land use and watershed topography. While insufficient for high-fidelity hydrograph simulation, this result confirms that a discernible, albeit complex, relationship between watershed form and hydrologic response time exists.
+
+In stark contrast, no tested model architecture, from simple linear regressions to more complex non-linear methods like Random Forests, could establish a meaningful predictive relationship for the Storage Coefficient ($R$). The best-performing models yielded R-squared values near zero or negative, indicating a complete failure to generalize. The subsequent hydrologic validation definitively confirmed that the inability to predict $R$ was the primary driver of the catastrophic failure in hydrograph simulation.
+
+The definitive failure to model $R$ strongly suggests that this parameter is not primarily a function of static watershed properties but is instead dominated by **dynamic, event-specific variables**. Factors such as antecedent moisture conditions, storm intensity, duration, and spatial distribution—which were not included as features in this study—are likely the principal drivers of watershed storage behavior. This highlights a fundamental limitation of traditional regionalization approaches for parameters that are highly sensitive to the initial and boundary conditions of a specific storm event.
+
+Methodologically, this study underscored the critical importance of rigorous data preprocessing. The quality of the final calibrated parameters was found to be highly sensitive to the geospatial accuracy of the pour points and the criteria used for storm event selection. Furthermore, an experiment comparing different data aggregation strategies revealed that including temporal land use data, while noisy, provided a stronger predictive signal for $T_c$ than a fully static, long-term average approach.
+
+In conclusion, this research quantifies the significant challenges in regionalizing event-based rainfall-runoff model parameters. Future work in this domain should proceed along several key avenues. First, the incorporation of **dynamic, event-specific features** is paramount; this could involve not only adding variables like antecedent precipitation indices to the current framework but also exploring more complex architectures, such as neural networks, that can integrate both static features and dynamic precipitation time-series to model streamflow directly. (It is import to note however, that such an approach is not valid for the simple ModClarks method as it is assumed same response across event storms). Second, the findings suggest inherent structural limitations in the ModClark model, particularly its poor performance for events yielding peak flows above 2 m³/s. Future research could therefore investigate the regionalization of parameters for alternative conceptual models, such as the Snyder Unit Hydrograph, which may be more suitable for this dataset. Finally, any data-driven approach would benefit from the **expansion of the study to a larger and more diverse set of watersheds**, by manually attempting to delineate as many valid watershed as possible, to improve the potential for learning robust, generalizable patterns.
 
 ## License
 
