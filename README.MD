@@ -50,6 +50,14 @@ For full reproducibility, the notebooks are structured sequentially and should b
 | 15 | [Explortaroy data analysis on features](notebooks/ML_model/15_explorartory_data_analysis.ipynb) | EDA on geomorphological features and target parameters ($T_c$, $R$). |
 | 16 | [Machine learning model and evaluation](notebooks/ML_model/16_ML_modeling_and_evaluation.ipynb) | Train ML models, apply transformation/scaling, and evaluate performance via $R^2$ and hydrologic simulation (NSE). |
 
+---
+
+## 📄 Complete Scientific Paper
+
+The complete detailed scientific paper, which contains the full narrative and justification for the methodology and results, is available as a dedicated file: **[paper.MD](./paper.MD)** within this repository.
+
+---
+
 ## 🔗 License
 
 This project is licensed under the MIT License.
